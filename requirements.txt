@@ -1,0 +1,5 @@
+edge-tts
+pypinyin
+pydub
+pygame
+PyQt6
