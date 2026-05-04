@@ -72,6 +72,7 @@ class MainWindow(QMainWindow):
         self._tone_display = ToneDisplay()
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setMinimumHeight(200)
         scroll.setWidget(self._tone_display)
 
         self._playback = PlaybackPanel()
@@ -79,8 +80,8 @@ class MainWindow(QMainWindow):
         right_split = QSplitter(Qt.Orientation.Vertical)
         right_split.addWidget(scroll)
         right_split.addWidget(self._playback)
-        right_split.setStretchFactor(0, 2)
-        right_split.setStretchFactor(1, 1)
+        right_split.setStretchFactor(0, 1)
+        right_split.setStretchFactor(1, 2)
 
         main_split = QSplitter(Qt.Orientation.Horizontal)
         main_split.addWidget(self._input)
@@ -183,8 +184,21 @@ class MainWindow(QMainWindow):
         return prepare_phrase(detection)
 
     def _refresh_phrase_ui(self, prepared: PreparedPhrase) -> None:
-        self._tone_display.set_syllables(prepared.syllables, prepared.syllable_tones)
+        self._tone_display.set_phrase(
+            prepared.syllables,
+            prepared.syllable_tones,
+            prepared.hanzi_per_syllable,
+        )
         self._playback.set_syllables(prepared.syllables)
+
+    @staticmethod
+    def _tts_text_for_syllable(prepared: PreparedPhrase, index: int) -> str:
+        """Prefer one Hanzi character for zh-CN TTS; Latin pinyin sounds unnatural in isolation."""
+        if 0 <= index < len(prepared.hanzi_per_syllable):
+            h = prepared.hanzi_per_syllable[index].strip()
+            if len(h) == 1 and "\u4e00" <= h <= "\u9fff":
+                return h
+        return prepared.syllables[index]
 
     def _on_play(self) -> None:
         if self._busy:
@@ -201,9 +215,15 @@ class MainWindow(QMainWindow):
 
         self._prepared = prepared
         self._refresh_phrase_ui(prepared)
-        self._run_synthesis(prepared.tts_text, syllable=None)
+        self._run_synthesis(prepared.tts_text, syllable=None, syllable_index=None)
 
-    def _run_synthesis(self, tts_text: str, *, syllable: str | None) -> None:
+    def _run_synthesis(
+        self,
+        tts_text: str,
+        *,
+        syllable: str | None,
+        syllable_index: int | None = None,
+    ) -> None:
         if self._busy:
             return
         t = self._t()
@@ -219,14 +239,19 @@ class MainWindow(QMainWindow):
                 )
                 return
 
-        text = syllable if syllable is not None else prepared.tts_text
+        if syllable_index is not None:
+            text = self._tts_text_for_syllable(prepared, syllable_index)
+        elif syllable is not None:
+            text = syllable
+        else:
+            text = tts_text
         voice_key = self._playback.voice_key()
         speed = self._playback.current_speed()
         self._pending_voice_key = voice_key
 
         reuse = ""
-        should_update_cache = syllable is None
-        if syllable is None:
+        should_update_cache = syllable is None and syllable_index is None
+        if should_update_cache:
             key = (prepared.tts_text, voice_key)
             if (
                 self._cache_key == key
@@ -327,5 +352,8 @@ class MainWindow(QMainWindow):
         prepared = self._prepared
         if prepared is None or index < 0 or index >= len(prepared.syllables):
             return
-        syl = prepared.syllables[index]
-        self._run_synthesis(syl, syllable=syl)
+        self._run_synthesis(
+            prepared.tts_text,
+            syllable=None,
+            syllable_index=index,
+        )

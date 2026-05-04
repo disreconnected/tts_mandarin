@@ -13,6 +13,9 @@ VOICES: dict[str, str] = {
     "male": "zh-CN-YunxiNeural",
 }
 
+# Edge TTS speaking rate: slower than default (~22% under stock) for a calmer “teacher” pace.
+DEFAULT_SPEECH_RATE = "-22%"
+
 
 class TTSError(RuntimeError):
     """Raised when synthesis fails (``key`` / ``params`` for UI translation)."""
@@ -36,6 +39,9 @@ async def generate_tts_async(
     voice_key: str = "female",
     out_dir: Path,
     suffix: str = ".mp3",
+    rate: str = DEFAULT_SPEECH_RATE,
+    pitch: str = "+0Hz",
+    volume: str = "+0%",
 ) -> Path:
     """
     Generate speech with Microsoft Edge TTS and write to a unique file under ``out_dir``.
@@ -49,7 +55,13 @@ async def generate_tts_async(
     out_path = out_dir / f"tts_{uuid.uuid4().hex}{suffix}"
 
     try:
-        communicate = edge_tts.Communicate(stripped, voice=voice)
+        communicate = edge_tts.Communicate(
+            stripped,
+            voice=voice,
+            rate=rate,
+            pitch=pitch,
+            volume=volume,
+        )
         await communicate.save(str(out_path))
     except TTSError:
         raise
@@ -68,8 +80,19 @@ def generate_tts(
     voice_key: str = "female",
     out_dir: Path,
     suffix: str = ".mp3",
+    rate: str = DEFAULT_SPEECH_RATE,
+    pitch: str = "+0Hz",
+    volume: str = "+0%",
 ) -> Path:
     """Synchronous wrapper for use from threads without an existing event loop."""
     return asyncio.run(
-        generate_tts_async(text, voice_key=voice_key, out_dir=out_dir, suffix=suffix)
+        generate_tts_async(
+            text,
+            voice_key=voice_key,
+            out_dir=out_dir,
+            suffix=suffix,
+            rate=rate,
+            pitch=pitch,
+            volume=volume,
+        )
     )

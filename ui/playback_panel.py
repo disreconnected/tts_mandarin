@@ -11,19 +11,25 @@ from PyQt6.QtWidgets import (
     QLabel,
     QListWidget,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
 from ui.i18n import UiTexts
 
+# Default ~0.9×: calmer than raw 1× for learners (still uses ffmpeg atempo).
 SPEED_CHOICES: list[tuple[str, float]] = [
     ("0.25×", 0.25),
     ("0.5×", 0.5),
+    ("0.75×", 0.75),
+    ("0.9× (default)", 0.9),
     ("1×", 1.0),
+    ("1.25×", 1.25),
     ("1.5×", 1.5),
     ("2×", 2.0),
 ]
+DEFAULT_SPEED_INDEX = 3  # 0.9×
 
 
 class PlaybackPanel(QWidget):
@@ -40,7 +46,7 @@ class PlaybackPanel(QWidget):
         self.speed_combo = QComboBox()
         for label, val in SPEED_CHOICES:
             self.speed_combo.addItem(label, val)
-        self.speed_combo.setCurrentIndex(2)  # 1×
+        self.speed_combo.setCurrentIndex(DEFAULT_SPEED_INDEX)
 
         self.voice_combo = QComboBox()
         self.voice_combo.setCurrentIndex(0)
@@ -68,7 +74,10 @@ class PlaybackPanel(QWidget):
         row_transport.addWidget(self.btn_save)
 
         self.syllable_list = QListWidget()
-        self.syllable_list.setMaximumHeight(120)
+        self.syllable_list.setMinimumHeight(120)
+        self.syllable_list.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
 
         self._lbl_speed = QLabel()
         self._lbl_voice = QLabel()
@@ -82,7 +91,7 @@ class PlaybackPanel(QWidget):
         v.addLayout(form)
         v.addLayout(row_transport)
         v.addWidget(self._lbl_syllables)
-        v.addWidget(self.syllable_list)
+        v.addWidget(self.syllable_list, stretch=1)
 
         outer = QVBoxLayout(self)
         outer.addWidget(self._group)
