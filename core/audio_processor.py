@@ -13,20 +13,23 @@ SETUP_DOC = "setup_ffmpeg.md"
 
 
 class AudioProcessingError(RuntimeError):
-    """Raised when ffmpeg/pydub processing fails."""
+    """Raised when ffmpeg/pydub processing fails (``key`` / ``params`` for UI translation)."""
+
+    def __init__(self, key: str, **params: object) -> None:
+        self.key = key
+        self.params = params
+        super().__init__(key)
 
 
 def _ensure_ffmpeg() -> None:
     if not which("ffmpeg"):
-        raise AudioProcessingError(
-            f"未找到 ffmpeg。请安装 ffmpeg 并加入 PATH，参见 {SETUP_DOC}。"
-        )
+        raise AudioProcessingError("ffmpeg_missing", doc=SETUP_DOC)
 
 
 def _atempo_filter_chain(speed_factor: float) -> str | None:
     """Return ffmpeg atempo chain for ``speed_factor`` (0.25–2.0 supported)."""
     if speed_factor <= 0:
-        raise AudioProcessingError("播放速度必须大于 0。")
+        raise AudioProcessingError("speed_invalid")
     if abs(speed_factor - 1.0) < 1e-6:
         return None
 
@@ -55,7 +58,7 @@ def apply_speed(
     """
     _ensure_ffmpeg()
     if not input_path.is_file():
-        raise AudioProcessingError(f"找不到输入音频：{input_path}")
+        raise AudioProcessingError("input_missing", path=str(input_path))
 
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"proc_{uuid.uuid4().hex}.{out_format}"
@@ -82,15 +85,13 @@ def apply_speed(
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True)
     except FileNotFoundError as e:
-        raise AudioProcessingError(
-            f"无法启动 ffmpeg。请安装并配置 PATH，参见 {SETUP_DOC}。"
-        ) from e
+        raise AudioProcessingError("ffmpeg_exec_failed", doc=SETUP_DOC) from e
     except subprocess.CalledProcessError as e:
         msg = (e.stderr or e.stdout or "").strip() or str(e)
-        raise AudioProcessingError(f"ffmpeg 处理失败：{msg}") from e
+        raise AudioProcessingError("ffmpeg_failed", detail=msg) from e
 
     if not out_path.is_file() or out_path.stat().st_size == 0:
-        raise AudioProcessingError("ffmpeg 未生成输出文件。")
+        raise AudioProcessingError("no_output_file")
 
     return out_path
 

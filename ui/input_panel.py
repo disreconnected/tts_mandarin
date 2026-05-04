@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QComboBox, QFormLayout, QGroupBox, QPlainTextEdit, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QComboBox, QFormLayout, QGroupBox, QLabel, QPlainTextEdit, QVBoxLayout, QWidget
 
 from core.input_detector import (
     InputDetectionError,
@@ -10,6 +10,7 @@ from core.input_detector import (
     detect_input,
     detect_pinyin_only,
 )
+from ui.i18n import UiTexts
 
 
 class InputMode:
@@ -22,24 +23,34 @@ class InputPanel(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.text_edit = QPlainTextEdit()
-        self.text_edit.setPlaceholderText("输入汉字（你好）或拼音（nǐ hǎo / ni3 hao3）…")
         self.text_edit.setMinimumHeight(100)
 
         self.mode_combo = QComboBox()
-        self.mode_combo.addItem("自动检测", InputMode.AUTO)
-        self.mode_combo.addItem("汉字模式", InputMode.HANZI)
-        self.mode_combo.addItem("拼音模式", InputMode.PINYIN)
+        self._lbl_mode = QLabel()
 
         form = QFormLayout()
-        form.addRow("识别方式：", self.mode_combo)
+        form.addRow(self._lbl_mode, self.mode_combo)
 
-        box = QGroupBox("输入")
-        v = QVBoxLayout(box)
+        self._group = QGroupBox()
+        v = QVBoxLayout(self._group)
         v.addLayout(form)
         v.addWidget(self.text_edit)
 
         outer = QVBoxLayout(self)
-        outer.addWidget(box)
+        outer.addWidget(self._group)
+
+    def apply_language(self, t: UiTexts) -> None:
+        self._group.setTitle(t.group_input)
+        self._lbl_mode.setText(t.label_detection_mode)
+        cur = self.mode_combo.currentData()
+        self.mode_combo.clear()
+        self.mode_combo.addItem(t.mode_auto, InputMode.AUTO)
+        self.mode_combo.addItem(t.mode_hanzi, InputMode.HANZI)
+        self.mode_combo.addItem(t.mode_pinyin, InputMode.PINYIN)
+        if cur is not None:
+            idx = self.mode_combo.findData(cur)
+            self.mode_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self.text_edit.setPlaceholderText(t.placeholder_input)
 
     def plain_text(self) -> str:
         return self.text_edit.toPlainText()

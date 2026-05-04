@@ -23,6 +23,7 @@ Detailed milestones, per-phase progress, and implementation notes: [ROADMAP.md](
 - **Speed**: 0.25×–2× using ffmpeg `atempo` (pitch-preserving).
 - **Tone view**: Syllables with tone-colored labels (1 red, 2 green, 3 blue, 4 purple, neutral gray).
 - **Playback**: Play / Pause / Stop, replay, play individual syllables, save **WAV/MP3**.
+- **Interface language**: **Language** menu — **English** (default) or **中文 (Simplified)**; choice is remembered.
 
 > **Note:** Edge `zh-CN` voices are tuned for **Hanzi**. Pinyin-only sentences may sound less natural than the same phrase written in characters.
 

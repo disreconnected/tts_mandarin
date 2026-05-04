@@ -15,13 +15,18 @@ VOICES: dict[str, str] = {
 
 
 class TTSError(RuntimeError):
-    """Raised when synthesis fails."""
+    """Raised when synthesis fails (``key`` / ``params`` for UI translation)."""
+
+    def __init__(self, key: str, **params: object) -> None:
+        self.key = key
+        self.params = params
+        super().__init__(key)
 
 
 def _resolve_voice(voice_key: str) -> str:
     if voice_key not in VOICES:
         known = ", ".join(sorted(VOICES))
-        raise TTSError(f"未知发音人：{voice_key!r}。可选：{known}")
+        raise TTSError("unknown_voice", voice=voice_key, known=known)
     return VOICES[voice_key]
 
 
@@ -37,7 +42,7 @@ async def generate_tts_async(
     """
     stripped = (text or "").strip()
     if not stripped:
-        raise TTSError("合成文本为空。")
+        raise TTSError("empty_tts_text")
 
     voice = _resolve_voice(voice_key)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -49,10 +54,10 @@ async def generate_tts_async(
     except TTSError:
         raise
     except Exception as e:
-        raise TTSError(f"语音合成失败：{e}") from e
+        raise TTSError("synth_failed", detail=str(e)) from e
 
     if not out_path.is_file() or out_path.stat().st_size == 0:
-        raise TTSError("语音合成未生成有效音频文件。")
+        raise TTSError("no_audio_output")
 
     return out_path
 

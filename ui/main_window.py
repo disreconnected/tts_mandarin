@@ -5,7 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pygame
-from PyQt6.QtCore import QThread, Qt, pyqtSignal
+from PyQt6.QtCore import QSettings, QThread, Qt, pyqtSignal
+from PyQt6.QtGui import QAction, QActionGroup
 from PyQt6.QtWidgets import (
     QFileDialog,
     QMainWindow,
@@ -20,21 +21,33 @@ from PyQt6.QtWidgets import (
 from core.audio_processor import AudioProcessingError, export_copy
 from core.input_detector import InputDetectionError
 from core.pinyin_converter import PreparedPhrase, prepare_phrase
+from ui.i18n import (
+    UiLanguage,
+    format_audio_error,
+    format_input_error,
+    texts,
+)
 from ui.input_panel import InputPanel
 from ui.playback_panel import PlaybackPanel
 from ui.tone_display import ToneDisplay
 from ui.tts_worker import TTSWorker
 
+SETTINGS_ORG = "TTSMandarin"
+SETTINGS_APP = "ChinesePronunciationTrainer"
+SETTINGS_LANG_KEY = "ui/language"
+
 
 class MainWindow(QMainWindow):
-    tts_request = pyqtSignal(str, str, float, str, bool)
+    tts_request = pyqtSignal(str, str, float, str, bool, str)
 
     def __init__(self, base_dir: Path, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Chinese Pronunciation Trainer")
         self._base_dir = base_dir
         self._temp_dir = base_dir / "temp_audio"
         self._temp_dir.mkdir(parents=True, exist_ok=True)
+
+        self._settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
+        self._ui_lang = self._read_saved_language()
 
         pygame.mixer.init(frequency=44100)
         self._prepared: PreparedPhrase | None = None
@@ -81,12 +94,67 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         self.setStatusBar(QStatusBar())
 
+        self._setup_language_menu()
+        self._apply_ui_language(self._ui_lang, persist=False)
+
         self._playback.play_clicked.connect(self._on_play)
         self._playback.pause_clicked.connect(self._on_pause)
         self._playback.stop_clicked.connect(self._on_stop)
         self._playback.replay_clicked.connect(self._on_replay)
         self._playback.save_clicked.connect(self._on_save)
         self._playback.syllable_activated.connect(self._on_syllable)
+
+    def _read_saved_language(self) -> UiLanguage:
+        raw = self._settings.value(SETTINGS_LANG_KEY, UiLanguage.EN.value)
+        try:
+            return UiLanguage(str(raw))
+        except ValueError:
+            return UiLanguage.EN
+
+    def _setup_language_menu(self) -> None:
+        menu = self.menuBar().addMenu("")
+        self._menu_language = menu
+
+        self._act_lang_en = QAction("", self)
+        self._act_lang_en.setCheckable(True)
+        self._act_lang_zh = QAction("", self)
+        self._act_lang_zh.setCheckable(True)
+
+        group = QActionGroup(self)
+        group.setExclusive(True)
+        group.addAction(self._act_lang_en)
+        group.addAction(self._act_lang_zh)
+
+        menu.addAction(self._act_lang_en)
+        menu.addAction(self._act_lang_zh)
+
+        self._act_lang_en.triggered.connect(
+            lambda: self._apply_ui_language(UiLanguage.EN, persist=True)
+        )
+        self._act_lang_zh.triggered.connect(
+            lambda: self._apply_ui_language(UiLanguage.ZH, persist=True)
+        )
+
+    def _apply_ui_language(self, lang: UiLanguage, *, persist: bool) -> None:
+        self._ui_lang = lang
+        if persist:
+            self._settings.setValue(SETTINGS_LANG_KEY, lang.value)
+
+        t = texts(lang)
+        self._menu_language.setTitle(t.menu_language)
+        self._act_lang_en.setText(t.lang_english)
+        self._act_lang_zh.setText(t.lang_chinese)
+        self.setWindowTitle(t.window_title)
+        self._input.apply_language(t)
+        self._playback.apply_language(t)
+        self._act_lang_en.setChecked(lang == UiLanguage.EN)
+        self._act_lang_zh.setChecked(lang == UiLanguage.ZH)
+        self.statusBar().showMessage(t.status_ready)
+        if self._prepared is not None:
+            self._refresh_phrase_ui(self._prepared)
+
+    def _t(self):
+        return texts(self._ui_lang)
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         self._cleanup_temp()
@@ -121,13 +189,14 @@ class MainWindow(QMainWindow):
     def _on_play(self) -> None:
         if self._busy:
             return
+        t = self._t()
         try:
             prepared = self._prepare_from_input()
         except InputDetectionError as e:
-            QMessageBox.warning(self, "输入无效", str(e))
+            QMessageBox.warning(self, t.dlg_invalid_input, format_input_error(self._ui_lang, e))
             return
         except Exception as e:
-            QMessageBox.critical(self, "错误", str(e))
+            QMessageBox.critical(self, t.dlg_error, str(e))
             return
 
         self._prepared = prepared
@@ -137,6 +206,7 @@ class MainWindow(QMainWindow):
     def _run_synthesis(self, tts_text: str, *, syllable: str | None) -> None:
         if self._busy:
             return
+        t = self._t()
         prepared = self._prepared
         if prepared is None:
             try:
@@ -144,7 +214,9 @@ class MainWindow(QMainWindow):
                 self._prepared = prepared
                 self._refresh_phrase_ui(prepared)
             except InputDetectionError as e:
-                QMessageBox.warning(self, "输入无效", str(e))
+                QMessageBox.warning(
+                    self, t.dlg_invalid_input, format_input_error(self._ui_lang, e)
+                )
                 return
 
         text = syllable if syllable is not None else prepared.tts_text
@@ -165,11 +237,19 @@ class MainWindow(QMainWindow):
                 should_update_cache = False
 
         self._set_busy(True)
-        self.statusBar().showMessage("正在合成语音…")
-        self.tts_request.emit(text, voice_key, speed, reuse, should_update_cache)
+        self.statusBar().showMessage(t.status_synthesizing)
+        self.tts_request.emit(
+            text,
+            voice_key,
+            speed,
+            reuse,
+            should_update_cache,
+            self._ui_lang.value,
+        )
 
     def _on_tts_finished(self, wav: str, mp3: str, should_update_cache: bool) -> None:
         self._set_busy(False)
+        t = self._t()
         if should_update_cache and self._prepared is not None:
             self._cached_mp3 = mp3
             self._cache_key = (self._prepared.tts_text, self._pending_voice_key)
@@ -178,45 +258,49 @@ class MainWindow(QMainWindow):
         try:
             pygame.mixer.music.load(wav)
             pygame.mixer.music.play()
-            self.statusBar().showMessage("正在播放")
+            self.statusBar().showMessage(t.status_playing)
         except Exception as e:
-            QMessageBox.warning(self, "播放失败", str(e))
+            QMessageBox.warning(self, t.dlg_playback_failed, str(e))
 
     def _on_tts_failed(self, message: str) -> None:
         self._set_busy(False)
-        self.statusBar().showMessage("就绪")
-        QMessageBox.warning(self, "合成失败", message)
+        t = self._t()
+        self.statusBar().showMessage(t.status_ready)
+        QMessageBox.warning(self, t.dlg_synthesis_failed, message)
 
     def _on_pause(self) -> None:
+        t = self._t()
         if pygame.mixer.music.get_busy():
             pygame.mixer.music.pause()
-            self.statusBar().showMessage("已暂停")
+            self.statusBar().showMessage(t.status_paused)
         else:
             try:
                 pygame.mixer.music.unpause()
-                self.statusBar().showMessage("正在播放")
+                self.statusBar().showMessage(t.status_playing)
             except Exception:
                 pass
 
     def _on_stop(self) -> None:
         pygame.mixer.music.stop()
-        self.statusBar().showMessage("已停止")
+        self.statusBar().showMessage(self._t().status_stopped)
 
     def _on_replay(self) -> None:
+        t = self._t()
         if self._current_wav and self._current_wav.is_file():
             try:
                 pygame.mixer.music.rewind()
                 pygame.mixer.music.play()
-                self.statusBar().showMessage("正在播放")
+                self.statusBar().showMessage(t.status_playing)
             except Exception:
                 self._on_play()
         else:
             self._on_play()
 
     def _on_save(self) -> None:
+        t = self._t()
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "保存音频",
+            t.dlg_save_audio,
             str(self._base_dir / "pronunciation.wav"),
             "WAV (*.wav);;MP3 (*.mp3)",
         )
@@ -224,18 +308,20 @@ class MainWindow(QMainWindow):
             return
         src = self._current_wav
         if src is None or not src.is_file():
-            QMessageBox.information(self, "保存", "暂无可保存的音频，请先播放一次。")
+            QMessageBox.information(self, t.dlg_save, t.dlg_save_nothing)
             return
         dest = Path(path)
         try:
             ext = dest.suffix.lower().lstrip(".")
             fmt = ext if ext in ("wav", "mp3") else "wav"
             export_copy(src, dest, format_hint=fmt)
-            self.statusBar().showMessage(f"已保存：{dest}")
+            self.statusBar().showMessage(t.status_saved.format(path=str(dest)))
         except AudioProcessingError as e:
-            QMessageBox.warning(self, "保存失败", str(e))
+            QMessageBox.warning(
+                self, t.dlg_save_failed, format_audio_error(self._ui_lang, e)
+            )
         except Exception as e:
-            QMessageBox.warning(self, "保存失败", str(e))
+            QMessageBox.warning(self, t.dlg_save_failed, str(e))
 
     def _on_syllable(self, index: int) -> None:
         prepared = self._prepared

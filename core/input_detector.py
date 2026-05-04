@@ -38,13 +38,17 @@ class InputDetection:
 
 
 class InputDetectionError(ValueError):
-    """Raised when input is empty or cannot be classified."""
+    """Raised when input is empty or cannot be classified (``key`` for UI translation)."""
+
+    def __init__(self, key: str) -> None:
+        self.key = key
+        super().__init__(key)
 
 
 def _strip_and_validate(text: str) -> str:
     cleaned = text.strip()
     if not cleaned:
-        raise InputDetectionError("请输入文字或拼音。")
+        raise InputDetectionError("empty_input")
     return cleaned
 
 
@@ -72,14 +76,14 @@ def detect_input(text: str, *, force_kind: InputKind | None = None) -> InputDete
     if re.fullmatch(r"[a-zA-ZüÜ\s\.\-']+", cleaned, re.IGNORECASE):
         return InputDetection(InputKind.MARKED_PINYIN, cleaned)
 
-    raise InputDetectionError("无法识别输入：请使用汉字、带声调拼音或数字声调拼音（如 ni3 hao3）。")
+    raise InputDetectionError("unrecognized_input")
 
 
 def detect_hanzi_only(text: str) -> InputDetection:
     """Treat input as Hanzi; reject if there are no CJK characters."""
     cleaned = _strip_and_validate(text)
     if not _HANZI_RE.search(cleaned):
-        raise InputDetectionError("当前为「汉字」模式：请输入包含汉字的文本。")
+        raise InputDetectionError("hanzi_mode_needs_cjk")
     return InputDetection(InputKind.HANZI, cleaned)
 
 
@@ -88,7 +92,7 @@ def detect_pinyin_only(text: str) -> InputDetection:
     cleaned = _strip_and_validate(text)
     parts = [p for p in re.split(r"\s+", cleaned) if p]
     if not parts:
-        raise InputDetectionError("请输入拼音。")
+        raise InputDetectionError("pinyin_empty")
 
     if all(_NUMBERED_TOKEN_RE.fullmatch(p) for p in parts):
         if any(p[-1].isdigit() for p in parts):
@@ -98,6 +102,4 @@ def detect_pinyin_only(text: str) -> InputDetection:
     if all(_MARKED_PINYIN_TOKEN_RE.fullmatch(p) for p in parts):
         return InputDetection(InputKind.MARKED_PINYIN, cleaned)
 
-    raise InputDetectionError(
-        "拼音模式：请使用带声调或数字声调的拼音，音节之间用空格分隔。"
-    )
+    raise InputDetectionError("pinyin_invalid_tokens")

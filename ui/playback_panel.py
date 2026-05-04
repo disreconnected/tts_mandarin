@@ -15,6 +15,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ui.i18n import UiTexts
+
 SPEED_CHOICES: list[tuple[str, float]] = [
     ("0.25×", 0.25),
     ("0.5×", 0.5),
@@ -22,9 +24,6 @@ SPEED_CHOICES: list[tuple[str, float]] = [
     ("1.5×", 1.5),
     ("2×", 2.0),
 ]
-
-VOICE_LABEL_FEMALE = "🎙️ Female"
-VOICE_LABEL_MALE = "🎙️ Male"
 
 
 class PlaybackPanel(QWidget):
@@ -44,15 +43,13 @@ class PlaybackPanel(QWidget):
         self.speed_combo.setCurrentIndex(2)  # 1×
 
         self.voice_combo = QComboBox()
-        self.voice_combo.addItem(VOICE_LABEL_FEMALE, "female")
-        self.voice_combo.addItem(VOICE_LABEL_MALE, "male")
         self.voice_combo.setCurrentIndex(0)
 
-        self.btn_play = QPushButton("播放")
-        self.btn_pause = QPushButton("暂停")
-        self.btn_stop = QPushButton("停止")
-        self.btn_replay = QPushButton("重播")
-        self.btn_save = QPushButton("另存为…")
+        self.btn_play = QPushButton()
+        self.btn_pause = QPushButton()
+        self.btn_stop = QPushButton()
+        self.btn_replay = QPushButton()
+        self.btn_save = QPushButton()
 
         for b in (
             self.btn_play,
@@ -73,19 +70,22 @@ class PlaybackPanel(QWidget):
         self.syllable_list = QListWidget()
         self.syllable_list.setMaximumHeight(120)
 
+        self._lbl_speed = QLabel()
+        self._lbl_voice = QLabel()
         form = QFormLayout()
-        form.addRow("语速：", self.speed_combo)
-        form.addRow("发音人：", self.voice_combo)
+        form.addRow(self._lbl_speed, self.speed_combo)
+        form.addRow(self._lbl_voice, self.voice_combo)
 
-        box = QGroupBox("播放")
-        v = QVBoxLayout(box)
+        self._lbl_syllables = QLabel()
+        self._group = QGroupBox()
+        v = QVBoxLayout(self._group)
         v.addLayout(form)
         v.addLayout(row_transport)
-        v.addWidget(QLabel("单字 / 音节："))
+        v.addWidget(self._lbl_syllables)
         v.addWidget(self.syllable_list)
 
         outer = QVBoxLayout(self)
-        outer.addWidget(box)
+        outer.addWidget(self._group)
 
         self.btn_play.clicked.connect(self.play_clicked.emit)
         self.btn_pause.clicked.connect(self.pause_clicked.emit)
@@ -98,6 +98,24 @@ class PlaybackPanel(QWidget):
         self.syllable_list.itemClicked.connect(
             lambda item: self.syllable_activated.emit(self.syllable_list.row(item))
         )
+
+    def apply_language(self, t: UiTexts) -> None:
+        self._group.setTitle(t.group_playback)
+        self._lbl_speed.setText(t.label_speed)
+        self._lbl_voice.setText(t.label_voice)
+        self._lbl_syllables.setText(t.label_syllables)
+        vk = self.voice_combo.currentData()
+        self.voice_combo.clear()
+        self.voice_combo.addItem(t.voice_female, "female")
+        self.voice_combo.addItem(t.voice_male, "male")
+        if vk is not None:
+            idx = self.voice_combo.findData(vk)
+            self.voice_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self.btn_play.setText(t.btn_play)
+        self.btn_pause.setText(t.btn_pause)
+        self.btn_stop.setText(t.btn_stop)
+        self.btn_replay.setText(t.btn_replay)
+        self.btn_save.setText(t.btn_save)
 
     def current_speed(self) -> float:
         v = self.speed_combo.currentData()
