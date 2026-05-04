@@ -2,6 +2,20 @@
 
 Desktop app for practicing Mandarin pronunciation and tones. Enter **Hanzi** or **Pinyin** (tone marks or tone numbers), hear high-quality **zh-CN** speech via Microsoft Edge TTS, adjust **tempo** without changing pitch (ffmpeg), and review **tone-colored** syllables.
 
+## Project progress
+
+**Overall completion: 20%** — one of five roadmap phases is shipped; each phase counts equally toward 100%.
+
+| Phase | Scope | Status |
+|------:|-------|--------|
+| 1 | Mandarin desktop trainer (this repo) | **Complete (100%)** |
+| 2 | English TTS and phonetics | Not started (0%) |
+| 3 | Long-text / audiobook mode | Not started (0%) |
+| 4 | User recording and comparison | Not started (0%) |
+| 5 | Web version | Not started (0%) |
+
+Detailed milestones, per-phase progress, and implementation notes: [ROADMAP.md](ROADMAP.md).
+
 ## Features (Phase 1)
 
 - **Dual input**: Chinese characters, Pinyin with tone marks (e.g. `nǐ hǎo`), or numbered Pinyin (`ni3 hao3`), with optional **Auto / 汉字 / 拼音** mode.
@@ -42,13 +56,13 @@ Enter text in the left panel, choose **发音人** (Female/Male) and **语速**,
 
 ## Roadmap (high level)
 
-- **Phase 1 (current):** Mandarin TTS trainer (this app).
+- **Phase 1:** Mandarin TTS trainer — **done** (see above).
 - **Phase 2:** English TTS with IPA-style breakdown.
 - **Phase 3:** Long-text / audiobook mode with sentence splitting.
-- **Phase 4:** Record user audio and compare to reference.
+- **Phase 4:** Record user voice and compare with reference pronunciation.
 - **Phase 5:** Web version (e.g. FastAPI + React).
 
-See [ROADMAP.md](ROADMAP.md) for later-phase detail.
+See [ROADMAP.md](ROADMAP.md) for per-phase progress and recommendations.
 
 ## License
 
