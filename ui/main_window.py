@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QSplitter,
     QStatusBar,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -32,6 +33,7 @@ from ui.i18n import (
 from ui.input_panel import InputPanel
 from ui.playback_panel import PlaybackPanel
 from ui.tone_display import ToneDisplay
+from ui.translation_panel import TranslationPanel
 from ui.tts_worker import TTSWorker
 
 SETTINGS_ORG = "TTSMandarin"
@@ -135,15 +137,27 @@ class MainWindow(QMainWindow):
         right_split.setStretchFactor(0, 1)
         right_split.setStretchFactor(1, 2)
 
-        main_split = QSplitter(Qt.Orientation.Horizontal)
-        main_split.addWidget(self._input)
-        main_split.addWidget(right_split)
-        main_split.setStretchFactor(0, 1)
-        main_split.setStretchFactor(1, 2)
+        trainer_split = QSplitter(Qt.Orientation.Horizontal)
+        trainer_split.addWidget(self._input)
+        trainer_split.addWidget(right_split)
+        trainer_split.setStretchFactor(0, 1)
+        trainer_split.setStretchFactor(1, 2)
+
+        trainer_tab = QWidget()
+        trainer_lay = QVBoxLayout(trainer_tab)
+        trainer_lay.setContentsMargins(0, 0, 0, 0)
+        trainer_lay.addWidget(trainer_split)
+
+        self._translation = TranslationPanel()
+        self._translation.send_to_trainer.connect(self._on_send_to_trainer)
+
+        self._tabs = QTabWidget()
+        self._tabs.addTab(trainer_tab, "Trainer")
+        self._tabs.addTab(self._translation, "Translation")
 
         central = QWidget()
         lay = QVBoxLayout(central)
-        lay.addWidget(main_split)
+        lay.addWidget(self._tabs)
         self.setCentralWidget(central)
         self.setStatusBar(QStatusBar())
 
@@ -232,6 +246,8 @@ class MainWindow(QMainWindow):
         self._act_lang_en.setText(t.lang_english)
         self._act_lang_zh.setText(t.lang_chinese)
         self.setWindowTitle(t.window_title)
+        self._tabs.setTabText(0, t.tab_trainer)
+        self._tabs.setTabText(1, t.tab_translation)
         self._input.apply_language(t)
         self._playback.apply_language(t)
         self._tone_display.set_ui_language(lang)
@@ -541,3 +557,9 @@ class MainWindow(QMainWindow):
             syllable=None,
             syllable_index=index,
         )
+
+    def _on_send_to_trainer(self, chinese_text: str) -> None:
+        self._tabs.setCurrentIndex(0)
+        self._input.set_plain_text(chinese_text)
+        self._input.text_edit.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._on_play()

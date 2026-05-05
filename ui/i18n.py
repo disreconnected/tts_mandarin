@@ -18,6 +18,8 @@ class UiLanguage(str, Enum):
 @dataclass(frozen=True)
 class UiTexts:
     window_title: str
+    tab_trainer: str
+    tab_translation: str
     menu_language: str
     lang_english: str
     lang_chinese: str
@@ -63,6 +65,8 @@ def texts(lang: UiLanguage) -> UiTexts:
     if lang == UiLanguage.ZH:
         return UiTexts(
             window_title="汉语发音练习器",
+            tab_trainer="训练",
+            tab_translation="翻译",
             menu_language="界面语言 (&L)",
             lang_english="English",
             lang_chinese="中文（简体）",
@@ -101,6 +105,8 @@ def texts(lang: UiLanguage) -> UiTexts:
         )
     return UiTexts(
         window_title="Chinese Pronunciation Trainer",
+        tab_trainer="Trainer",
+        tab_translation="Translation",
         menu_language="&Language",
         lang_english="English",
         lang_chinese="中文 (Simplified)",
