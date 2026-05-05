@@ -75,6 +75,8 @@ class MainWindow(QMainWindow):
 
     def __init__(self, base_dir: Path, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setMinimumSize(1100, 700)
+        self.resize(1200, 800)
         self._base_dir = base_dir
         self._temp_dir = base_dir / "temp_audio"
         self._temp_dir.mkdir(parents=True, exist_ok=True)

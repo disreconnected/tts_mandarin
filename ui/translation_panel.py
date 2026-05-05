@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 
 import jieba
 from pypinyin import Style, lazy_pinyin
@@ -123,7 +124,6 @@ class GlossWorker(QObject):
     """Background worker that builds word-by-word cards."""
 
     finished = pyqtSignal(int, list)
-    failed = pyqtSignal(int, str)
 
     def __init__(self, token: int, chinese_text: str) -> None:
         super().__init__()
@@ -132,11 +132,29 @@ class GlossWorker(QObject):
 
     @pyqtSlot()
     def run(self) -> None:
+        cards: list[tuple[str, str, str, int]] = []
         try:
             words = [w.strip() for w in jieba.cut(self._text) if w.strip()]
             words = [w for w in words if _WORD_RE.fullmatch(w) and _contains_cjk(w)]
-            cards: list[tuple[str, str, str, int]] = []
-            for w in words:
+            if not words:
+                self.finished.emit(self._token, cards)
+                return
+
+            glosses = ["—"] * len(words)
+            batch = " | ".join(words)
+            try:
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    fut = pool.submit(
+                        translate_text, batch, "zh-CN", "en"
+                    )
+                    batch_out = fut.result(timeout=5)
+                parts = [p.strip() for p in str(batch_out).split("|")]
+                if len(parts) == len(words):
+                    glosses = [p if p else "—" for p in parts]
+            except (FuturesTimeout, Exception):
+                glosses = ["—"] * len(words)
+
+            for i, w in enumerate(words):
                 pys = lazy_pinyin(
                     w,
                     style=Style.TONE,
@@ -146,14 +164,12 @@ class GlossWorker(QObject):
                 )
                 pinyin = " ".join(pys).strip()
                 tone = _tone_of_syllable(pys[0]) if pys else 5
-                try:
-                    gloss = translate_text(w, source="zh-CN", target="en")
-                except Exception:
-                    gloss = ""
+                gloss = glosses[i] if i < len(glosses) else "—"
                 cards.append((w, pinyin, gloss, tone))
+        except Exception:
+            cards = []
+        finally:
             self.finished.emit(self._token, cards)
-        except Exception as e:
-            self.failed.emit(self._token, str(e))
 
 
 class TranslationPanel(QWidget):
@@ -216,7 +232,7 @@ class TranslationPanel(QWidget):
         self._breakdown_scroll.setWidgetResizable(True)
         self._breakdown_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self._breakdown_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._breakdown_scroll.setMinimumHeight(170)
+        self._breakdown_scroll.setFixedHeight(180)
         self._breakdown_scroll.setWidget(self._breakdown_host)
 
         lay.addLayout(form)
@@ -321,9 +337,7 @@ class TranslationPanel(QWidget):
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
         worker.finished.connect(self._on_gloss_finished)
-        worker.failed.connect(self._on_gloss_failed)
         worker.finished.connect(thread.quit)
-        worker.failed.connect(thread.quit)
         thread.finished.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
 
@@ -336,15 +350,11 @@ class TranslationPanel(QWidget):
             return
         self._breakdown_loading.setText("")
         self._clear_breakdown()
+        if not cards:
+            self._breakdown_loading.setText("No breakdown available.")
+            return
         for hanzi, pinyin, gloss, tone in cards:
             self._breakdown_layout.insertWidget(
                 self._breakdown_layout.count() - 1,
                 WordCard(hanzi, pinyin, gloss, tone, self._breakdown_host),
             )
-
-    @pyqtSlot(int, str)
-    def _on_gloss_failed(self, token: int, detail: str) -> None:
-        if token != self._request_token:
-            return
-        self._clear_breakdown()
-        self._breakdown_loading.setText(f"Loading glosses failed: {detail}")

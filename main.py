@@ -14,7 +14,6 @@ def main() -> None:
     base_dir = Path(__file__).resolve().parent
     app = QApplication(sys.argv)
     win = MainWindow(base_dir)
-    win.resize(960, 640)
     win.show()
     sys.exit(app.exec())
 
