@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeou
 
 import jieba
 from pypinyin import Style, lazy_pinyin
-from PyQt6.QtCore import QObject, QThread, Qt, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QObject, QThread, QTimer, Qt, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QEnterEvent, QFont
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -34,6 +34,28 @@ TONE_COLORS: dict[int, str] = {
     3: "#1565c0",
     4: "#6a1b9a",
     5: "#757575",
+}
+
+# Prefer concise learner-friendly glosses for common function words.
+GLOSS_OVERRIDES: dict[str, str] = {
+    "的": "(possessive particle)",
+    "了": "(completed-action particle)",
+    "吗": "(question particle)",
+    "呢": "(topic/question particle)",
+    "吧": "(suggestion particle)",
+    "啊": "(exclamatory particle)",
+    "呀": "(exclamatory particle)",
+    "嘛": "(obviousness particle)",
+    "在": "at / in",
+    "是": "to be",
+    "不": "not",
+    "没": "not / did not",
+    "有": "have / there is",
+    "和": "and",
+    "跟": "with",
+    "给": "for / give",
+    "被": "(passive marker)",
+    "把": "(ba-construction marker)",
 }
 
 
@@ -139,19 +161,23 @@ class GlossWorker(QObject):
             if not words:
                 return
 
-            glosses = ["—"] * len(words)
-            batch = " | ".join(words)
-            executor = ThreadPoolExecutor(max_workers=1)
-            try:
-                fut = executor.submit(translate_text, batch, "zh-CN", "en")
-                batch_out = fut.result(timeout=5)
-                parts = [p.strip() for p in str(batch_out).split("|")]
-                if len(parts) == len(words):
-                    glosses = [p if p else "—" for p in parts]
-            except (FuturesTimeout, Exception):
-                glosses = ["—"] * len(words)
-            finally:
-                executor.shutdown(wait=False, cancel_futures=True)
+            def _translate_word_with_timeout(word: str, timeout_sec: float = 2.0) -> str:
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    fut = pool.submit(translate_text, word, "zh-CN", "en")
+                    try:
+                        out = fut.result(timeout=timeout_sec)
+                    except (FuturesTimeout, Exception):
+                        return "—"
+                gloss = str(out).strip()
+                return gloss if gloss else "—"
+
+            def _normalize_gloss(word: str, gloss: str) -> str:
+                if word in GLOSS_OVERRIDES:
+                    return GLOSS_OVERRIDES[word]
+                return gloss
+
+            # Per-word glossing is more accurate than separator-based batch translation.
+            glosses = [_normalize_gloss(w, _translate_word_with_timeout(w)) for w in words]
 
             for i, w in enumerate(words):
                 pys = lazy_pinyin(
@@ -181,6 +207,10 @@ class TranslationPanel(QWidget):
         self._result_chinese: str = ""
         self._request_token = 0
         self._worker_thread: QThread | None = None
+        self._worker_obj: GlossWorker | None = None
+        self._loading_watchdog = QTimer(self)
+        self._loading_watchdog.setSingleShot(True)
+        self._loading_watchdog.timeout.connect(self._on_loading_watchdog_timeout)
 
         self._group = QGroupBox("Translation")
         lay = QVBoxLayout(self._group)
@@ -330,6 +360,7 @@ class TranslationPanel(QWidget):
         token = self._request_token
         self._breakdown_loading.setText("Loading glosses...")
         self._clear_breakdown()
+        self._loading_watchdog.start(6500)
 
         thread = QThread(self)
         worker = GlossWorker(token, chinese_text)
@@ -341,12 +372,14 @@ class TranslationPanel(QWidget):
         thread.finished.connect(thread.deleteLater)
 
         self._worker_thread = thread
+        self._worker_obj = worker
         thread.start()
 
     @pyqtSlot(int, list)
     def _on_gloss_finished(self, token: int, cards: list) -> None:
         if token != self._request_token:
             return
+        self._loading_watchdog.stop()
         self._breakdown_loading.setText("")
         self._clear_breakdown()
         if not cards:
@@ -357,3 +390,8 @@ class TranslationPanel(QWidget):
                 self._breakdown_layout.count() - 1,
                 WordCard(hanzi, pinyin, gloss, tone, self._breakdown_host),
             )
+
+    def _on_loading_watchdog_timeout(self) -> None:
+        if self._breakdown_loading.text().strip():
+            self._clear_breakdown()
+            self._breakdown_loading.setText("No breakdown available.")
