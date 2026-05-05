@@ -13,7 +13,6 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
-    QScrollArea,
     QSplitter,
     QStatusBar,
     QTabWidget,
@@ -124,17 +123,11 @@ class MainWindow(QMainWindow):
 
         self._input = InputPanel(self._history_path)
         self._tone_display = ToneDisplay()
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setMinimumHeight(200)
-        scroll.setWidget(self._tone_display)
 
         self._playback = PlaybackPanel()
 
         right_split = QSplitter(Qt.Orientation.Vertical)
-        right_split.addWidget(scroll)
+        right_split.addWidget(self._tone_display)
         right_split.addWidget(self._playback)
         right_split.setStretchFactor(0, 1)
         right_split.setStretchFactor(1, 2)
@@ -301,11 +294,13 @@ class MainWindow(QMainWindow):
         return prepare_phrase(detection)
 
     def _refresh_phrase_ui(self, prepared: PreparedPhrase) -> None:
+        self._tone_display.setUpdatesEnabled(False)
         self._tone_display.set_phrase(
             prepared.syllables,
             prepared.syllable_tones,
             prepared.hanzi_per_syllable,
         )
+        self._tone_display.setUpdatesEnabled(True)
         self._playback.set_syllables(
             prepared.syllables,
             prepared.hanzi_per_syllable,

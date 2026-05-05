@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QMouseEvent, QResizeEvent
+from PyQt6.QtGui import QFont, QMouseEvent
 from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFrame,
-    QGridLayout,
+    QHBoxLayout,
     QLabel,
+    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -124,11 +125,24 @@ class ToneDisplay(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._layout = QGridLayout(self)
+        self.setFixedHeight(160)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        self._scroll = QScrollArea(self)
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._scroll.setFixedHeight(160)
+
+        self._content = QWidget()
+        self._layout = QHBoxLayout(self._content)
         self._layout.setContentsMargins(6, 6, 6, 6)
-        self._layout.setHorizontalSpacing(10)
-        self._layout.setVerticalSpacing(8)
+        self._layout.setSpacing(10)
         self._layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        self._scroll.setWidget(self._content)
+        outer.addWidget(self._scroll)
+
         self._cells: list[QFrame] = []
         self._ui_lang = UiLanguage.EN
         self._highlight_index: int | None = None
@@ -161,21 +175,6 @@ class ToneDisplay(QWidget):
             if w is not None:
                 w.deleteLater()
 
-    def _column_count(self, n: int) -> int:
-        if n <= 0:
-            return 1
-        w = max(320, self.width())
-        target_cell = 115
-        return max(1, w // target_cell)
-
-    def _font_sizes(self, n: int) -> tuple[int, int, int]:
-        cols = self._column_count(max(1, n))
-        per_cell = max(72, (max(320, self.width()) - 24) // cols)
-        hz = max(18, min(30, int(per_cell * 0.28)))
-        tone = max(10, min(13, int(hz * 0.42)))
-        py = max(13, min(20, int(hz * 0.64)))
-        return hz, tone, py
-
     def highlight(self, index: int | None) -> None:
         """Mark syllable ``index`` visually, or ``None`` / negative to clear."""
         self._highlight_index = index if index is not None and index >= 0 else None
@@ -204,17 +203,15 @@ class ToneDisplay(QWidget):
         hanzi_row = self._hanzi_row
         show_hanzi = len(syllables) > 0 and len(hanzi_row) == len(syllables)
         font_hz = QFont()
-        hz_sz, tone_sz, py_sz = self._font_sizes(len(syllables))
-        font_hz.setPointSize(hz_sz)
+        font_hz.setPointSize(28)
         font_hz.setBold(True)
         font_top = QFont()
-        font_top.setPointSize(tone_sz)
+        font_top.setPointSize(12)
         font_top.setBold(True)
         font_bot = QFont()
-        font_bot.setPointSize(py_sz)
+        font_bot.setPointSize(18)
         font_bot.setBold(False)
 
-        cols = self._column_count(len(syllables))
         for i, (syl, tone) in enumerate(zip(syllables, tones)):
             t = tone if tone in TONE_COLORS else 5
             color = TONE_COLORS.get(t, TONE_COLORS[5])
@@ -254,9 +251,8 @@ class ToneDisplay(QWidget):
                 QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum
             )
             self._cells.append(cell)
-            row = i // cols
-            col = i % cols
-            self._layout.addWidget(cell, row, col)
+            self._layout.addWidget(cell)
+        self._layout.addStretch(1)
         self.highlight(None)
 
     def set_phrase(
@@ -270,11 +266,3 @@ class ToneDisplay(QWidget):
         self._hanzi_row = hanzi_per_syllable or tuple()
         self._highlight_index = None
         self._rebuild_cells()
-
-    def resizeEvent(self, event: QResizeEvent) -> None:
-        super().resizeEvent(event)
-        if self._syllables:
-            keep = self._highlight_index
-            self._rebuild_cells()
-            if keep is not None:
-                self.highlight(keep)

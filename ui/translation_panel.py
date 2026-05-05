@@ -137,22 +137,21 @@ class GlossWorker(QObject):
             words = [w.strip() for w in jieba.cut(self._text) if w.strip()]
             words = [w for w in words if _WORD_RE.fullmatch(w) and _contains_cjk(w)]
             if not words:
-                self.finished.emit(self._token, cards)
                 return
 
             glosses = ["—"] * len(words)
             batch = " | ".join(words)
+            executor = ThreadPoolExecutor(max_workers=1)
             try:
-                with ThreadPoolExecutor(max_workers=1) as pool:
-                    fut = pool.submit(
-                        translate_text, batch, "zh-CN", "en"
-                    )
-                    batch_out = fut.result(timeout=5)
+                fut = executor.submit(translate_text, batch, "zh-CN", "en")
+                batch_out = fut.result(timeout=5)
                 parts = [p.strip() for p in str(batch_out).split("|")]
                 if len(parts) == len(words):
                     glosses = [p if p else "—" for p in parts]
             except (FuturesTimeout, Exception):
                 glosses = ["—"] * len(words)
+            finally:
+                executor.shutdown(wait=False, cancel_futures=True)
 
             for i, w in enumerate(words):
                 pys = lazy_pinyin(
