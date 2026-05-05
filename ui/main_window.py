@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from pathlib import Path
 
 import pygame
@@ -39,14 +38,31 @@ SETTINGS_ORG = "TTSMandarin"
 SETTINGS_APP = "ChinesePronunciationTrainer"
 SETTINGS_LANG_KEY = "ui/language"
 
+# Advance highlight slightly so the UI leads the ear (ms added to pygame music position).
+HIGHLIGHT_LEAD_MS = 150
+
 
 def _wav_duration_seconds(path: Path) -> float:
+    """Length of ``path`` in seconds (pygame first, then pydub)."""
+    try:
+        return float(pygame.mixer.Sound(str(path)).get_length())
+    except Exception:
+        pass
     try:
         from pydub import AudioSegment
 
         return float(len(AudioSegment.from_file(str(path))) / 1000.0)
     except Exception:
         return 0.0
+
+
+def _avg_syllable_duration_sec(wav_path: Path, syllable_count: int) -> float:
+    """Seconds per syllable from the final (speed-adjusted) WAV."""
+    n = max(1, syllable_count)
+    total = _wav_duration_seconds(wav_path)
+    if total > 0:
+        return total / n
+    return max(0.12, 0.35 / n)
 
 
 class MainWindow(QMainWindow):
@@ -74,14 +90,13 @@ class MainWindow(QMainWindow):
         self._pending_was_full_phrase = False
         self._transport_active = False
         self._loop_armed = False
-        self._play_start_monotonic = 0.0
-        self._playback_duration = 0.0
+        self._syllable_duration_sec = 0.35
         self._highlight_mode_full = True
         self._highlight_single_idx: int | None = None
         self._highlight_syllable_count = 0
 
         self._highlight_timer = QTimer(self)
-        self._highlight_timer.setInterval(300)
+        self._highlight_timer.setInterval(100)
         self._highlight_timer.timeout.connect(self._on_highlight_tick)
 
         self._playback_monitor_timer = QTimer(self)
@@ -412,11 +427,10 @@ class MainWindow(QMainWindow):
             self._highlight_single_idx = None
             self._highlight_syllable_count = max(1, len(prepared.syllables))
 
-        self._playback_duration = _wav_duration_seconds(self._current_wav)
-        if self._playback_duration <= 0:
-            self._playback_duration = max(0.45, 0.35 * self._highlight_syllable_count)
-
-        self._play_start_monotonic = time.monotonic()
+        self._syllable_duration_sec = _avg_syllable_duration_sec(
+            self._current_wav,
+            self._highlight_syllable_count,
+        )
         self._loop_armed = self._playback.loop_enabled()
         self._transport_active = True
         self._highlight_timer.start()
@@ -431,15 +445,21 @@ class MainWindow(QMainWindow):
     def _on_highlight_tick(self) -> None:
         if not self._transport_active or not pygame.mixer.music.get_busy():
             return
-        elapsed = time.monotonic() - self._play_start_monotonic
         if not self._highlight_mode_full and self._highlight_single_idx is not None:
             self._tone_display.highlight(self._highlight_single_idx)
             return
         n = self._highlight_syllable_count
         if n <= 0:
             return
-        per = self._playback_duration / n
-        idx = min(n - 1, max(0, int(elapsed / per)))
+        pos_ms = pygame.mixer.music.get_pos()
+        if pos_ms < 0:
+            pos_ms = 0
+        step_ms = self._syllable_duration_sec * 1000.0
+        if step_ms <= 0:
+            return
+        effective_ms = float(pos_ms) + float(HIGHLIGHT_LEAD_MS)
+        idx = int(effective_ms / step_ms)
+        idx = min(n - 1, max(0, idx))
         self._tone_display.highlight(idx)
 
     def _on_playback_monitor_tick(self) -> None:
@@ -454,7 +474,6 @@ class MainWindow(QMainWindow):
             try:
                 pygame.mixer.music.rewind()
                 pygame.mixer.music.play()
-                self._play_start_monotonic = time.monotonic()
                 self._highlight_timer.start()
                 self._playback_monitor_timer.start()
                 self.statusBar().showMessage(
