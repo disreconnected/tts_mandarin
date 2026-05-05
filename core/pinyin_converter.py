@@ -20,6 +20,7 @@ def _split_pinyin_tokens(text: str) -> list[str]:
 
 
 _EDGE_PUNCT = frozenset(""".,;:!?。，；：！？'"[]()（）「」『』""")
+_SENTENCE_END_RE = re.compile(r"([。！？!?\.])\s*")
 
 
 def _strip_pinyin_token_edges(tok: str) -> str:
@@ -30,6 +31,16 @@ def _strip_pinyin_token_edges(tok: str) -> str:
     while t and t[0] in _EDGE_PUNCT:
         t = t[1:]
     return t.strip()
+
+
+def _with_sentence_pauses(text: str) -> str:
+    """
+    Add stronger pauses between sentences for full-phrase TTS playback.
+    Edge-TTS tends to insert a brief pause for punctuation already; converting
+    sentence ends to paragraph breaks makes the gap clearer for learners.
+    """
+    out = _SENTENCE_END_RE.sub(r"\1\n\n", text)
+    return out.strip()
 
 
 def numbered_to_marked(text: str) -> list[str]:
@@ -118,14 +129,15 @@ def prepare_phrase(detection: InputDetection) -> PreparedPhrase:
     text = detection.text
 
     if kind == InputKind.HANZI:
-        # Use per-character conversion to keep citation tones for display/training
-        # (e.g. 一百块 -> yī bǎi kuài instead of contextual yì bǎi kuài).
+        # Apply contextual tone sandhi for natural spoken Mandarin display
+        # (e.g. 你好 -> ní hǎo, 一百块 -> yì bǎi kuài).
         syllables = lazy_pinyin(
-            list(text),
+            text,
             style=Style.TONE,
             neutral_tone_with_five=True,
+            tone_sandhi=True,
         )
-        tts_text = text
+        tts_text = _with_sentence_pauses(text)
         tones = [_tone_from_syllable(s) for s in syllables]
         hanzi = tuple(to_simplified(c) for c in _align_hanzi_cells(text, syllables))
         return PreparedPhrase(
