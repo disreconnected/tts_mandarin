@@ -38,8 +38,11 @@ SETTINGS_ORG = "TTSMandarin"
 SETTINGS_APP = "ChinesePronunciationTrainer"
 SETTINGS_LANG_KEY = "ui/language"
 
-# Advance highlight slightly so the UI leads the ear (ms added to pygame music position).
-HIGHLIGHT_LEAD_MS = 150
+# Advance highlight so the UI leads the ear. TTS does not space syllables evenly, so mid-phrase
+# syllables (e.g. 几 in 你家有几口人) can feel late with a fixed lead — add a small ramp toward
+# the end of the clip on top of the base lead.
+HIGHLIGHT_LEAD_MS = 170
+HIGHLIGHT_PROGRESSIVE_MAX_MS = 52
 
 
 def _wav_duration_seconds(path: Path) -> float:
@@ -91,6 +94,7 @@ class MainWindow(QMainWindow):
         self._transport_active = False
         self._loop_armed = False
         self._syllable_duration_sec = 0.35
+        self._playback_total_ms = 0.0
         self._highlight_mode_full = True
         self._highlight_single_idx: int | None = None
         self._highlight_syllable_count = 0
@@ -431,6 +435,9 @@ class MainWindow(QMainWindow):
             self._current_wav,
             self._highlight_syllable_count,
         )
+        self._playback_total_ms = (
+            self._syllable_duration_sec * float(self._highlight_syllable_count) * 1000.0
+        )
         self._loop_armed = self._playback.loop_enabled()
         self._transport_active = True
         self._highlight_timer.start()
@@ -457,7 +464,9 @@ class MainWindow(QMainWindow):
         step_ms = self._syllable_duration_sec * 1000.0
         if step_ms <= 0:
             return
-        effective_ms = float(pos_ms) + float(HIGHLIGHT_LEAD_MS)
+        total_ms = max(self._playback_total_ms, 1.0)
+        progressive = HIGHLIGHT_PROGRESSIVE_MAX_MS * (float(pos_ms) / total_ms)
+        effective_ms = float(pos_ms) + float(HIGHLIGHT_LEAD_MS) + progressive
         idx = int(effective_ms / step_ms)
         idx = min(n - 1, max(0, idx))
         self._tone_display.highlight(idx)
