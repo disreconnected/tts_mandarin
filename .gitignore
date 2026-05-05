@@ -12,5 +12,6 @@ env/
 dist/
 build/
 temp_audio/
+assets/history.json
 *.wav
 *.mp3

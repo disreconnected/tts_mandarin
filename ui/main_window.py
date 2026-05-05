@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import pygame
-from PyQt6.QtCore import QSettings, QThread, Qt, pyqtSignal
-from PyQt6.QtGui import QAction, QActionGroup
+from PyQt6.QtCore import QSettings, QThread, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QMainWindow,
     QMessageBox,
+    QPlainTextEdit,
     QScrollArea,
     QSplitter,
     QStatusBar,
@@ -37,6 +40,15 @@ SETTINGS_APP = "ChinesePronunciationTrainer"
 SETTINGS_LANG_KEY = "ui/language"
 
 
+def _wav_duration_seconds(path: Path) -> float:
+    try:
+        from pydub import AudioSegment
+
+        return float(len(AudioSegment.from_file(str(path))) / 1000.0)
+    except Exception:
+        return 0.0
+
+
 class MainWindow(QMainWindow):
     tts_request = pyqtSignal(str, str, float, str, bool, str)
 
@@ -45,6 +57,7 @@ class MainWindow(QMainWindow):
         self._base_dir = base_dir
         self._temp_dir = base_dir / "temp_audio"
         self._temp_dir.mkdir(parents=True, exist_ok=True)
+        self._history_path = base_dir / "assets" / "history.json"
 
         self._settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
         self._ui_lang = self._read_saved_language()
@@ -57,6 +70,24 @@ class MainWindow(QMainWindow):
         self._pending_voice_key: str = "female"
         self._busy = False
 
+        self._pending_syllable_index: int | None = None
+        self._pending_was_full_phrase = False
+        self._transport_active = False
+        self._loop_armed = False
+        self._play_start_monotonic = 0.0
+        self._playback_duration = 0.0
+        self._highlight_mode_full = True
+        self._highlight_single_idx: int | None = None
+        self._highlight_syllable_count = 0
+
+        self._highlight_timer = QTimer(self)
+        self._highlight_timer.setInterval(300)
+        self._highlight_timer.timeout.connect(self._on_highlight_tick)
+
+        self._playback_monitor_timer = QTimer(self)
+        self._playback_monitor_timer.setInterval(150)
+        self._playback_monitor_timer.timeout.connect(self._on_playback_monitor_tick)
+
         self._tts_thread = QThread(self)
         self._tts_worker = TTSWorker(self._temp_dir)
         self._tts_worker.moveToThread(self._tts_thread)
@@ -68,7 +99,7 @@ class MainWindow(QMainWindow):
         self._tts_worker.failed.connect(self._on_tts_failed)
         self._tts_thread.start()
 
-        self._input = InputPanel()
+        self._input = InputPanel(self._history_path)
         self._tone_display = ToneDisplay()
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -96,14 +127,48 @@ class MainWindow(QMainWindow):
         self.setStatusBar(QStatusBar())
 
         self._setup_language_menu()
+        self._setup_shortcuts()
         self._apply_ui_language(self._ui_lang, persist=False)
 
         self._playback.play_clicked.connect(self._on_play)
-        self._playback.pause_clicked.connect(self._on_pause)
         self._playback.stop_clicked.connect(self._on_stop)
-        self._playback.replay_clicked.connect(self._on_replay)
         self._playback.save_clicked.connect(self._on_save)
         self._playback.syllable_activated.connect(self._on_syllable)
+
+    def _setup_shortcuts(self) -> None:
+        sc_space = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
+        sc_space.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        sc_space.activated.connect(self._shortcut_space_play_stop)
+
+        sc_r = QShortcut(QKeySequence(Qt.Key.Key_R), self)
+        sc_r.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        sc_r.activated.connect(self._shortcut_replay)
+
+        sc_s = QShortcut(QKeySequence(Qt.Key.Key_S), self)
+        sc_s.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        sc_s.activated.connect(self._shortcut_focus_input)
+
+    def _input_has_focus(self) -> bool:
+        fw = QApplication.focusWidget()
+        return isinstance(fw, QPlainTextEdit) and fw is self._input.text_edit
+
+    def _shortcut_space_play_stop(self) -> None:
+        if self._input_has_focus():
+            return
+        if pygame.mixer.music.get_busy():
+            self._on_stop()
+        else:
+            self._on_play()
+
+    def _shortcut_replay(self) -> None:
+        if self._input_has_focus():
+            return
+        self._on_replay_resynthesize()
+
+    def _shortcut_focus_input(self) -> None:
+        if self._input_has_focus():
+            return
+        self._input.text_edit.setFocus(Qt.FocusReason.ShortcutFocusReason)
 
     def _read_saved_language(self) -> UiLanguage:
         raw = self._settings.value(SETTINGS_LANG_KEY, UiLanguage.EN.value)
@@ -148,16 +213,22 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(t.window_title)
         self._input.apply_language(t)
         self._playback.apply_language(t)
+        self._tone_display.set_ui_language(lang)
         self._act_lang_en.setChecked(lang == UiLanguage.EN)
         self._act_lang_zh.setChecked(lang == UiLanguage.ZH)
-        self.statusBar().showMessage(t.status_ready)
+        self._show_status_idle()
         if self._prepared is not None:
             self._refresh_phrase_ui(self._prepared)
+
+    def _show_status_idle(self) -> None:
+        t = texts(self._ui_lang)
+        self.statusBar().showMessage(f"{t.status_ready} — {t.status_shortcuts_hint}")
 
     def _t(self):
         return texts(self._ui_lang)
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
+        self._stop_transport()
         self._cleanup_temp()
         pygame.mixer.music.stop()
         pygame.mixer.quit()
@@ -179,6 +250,13 @@ class MainWindow(QMainWindow):
         self._busy = busy
         self._playback.set_busy(busy)
 
+    def _stop_transport(self) -> None:
+        self._transport_active = False
+        self._loop_armed = False
+        self._highlight_timer.stop()
+        self._playback_monitor_timer.stop()
+        self._tone_display.highlight(None)
+
     def _prepare_from_input(self) -> PreparedPhrase:
         detection = self._input.detect()
         return prepare_phrase(detection)
@@ -189,7 +267,10 @@ class MainWindow(QMainWindow):
             prepared.syllable_tones,
             prepared.hanzi_per_syllable,
         )
-        self._playback.set_syllables(prepared.syllables)
+        self._playback.set_syllables(
+            prepared.syllables,
+            prepared.hanzi_per_syllable,
+        )
 
     @staticmethod
     def _tts_text_for_syllable(prepared: PreparedPhrase, index: int) -> str:
@@ -217,6 +298,25 @@ class MainWindow(QMainWindow):
         self._refresh_phrase_ui(prepared)
         self._run_synthesis(prepared.tts_text, syllable=None, syllable_index=None)
 
+    def _on_replay_resynthesize(self) -> None:
+        """Re-run Edge-TTS with current box text and playback settings (R shortcut)."""
+        if self._busy:
+            return
+        t = self._t()
+        try:
+            prepared = self._prepare_from_input()
+        except InputDetectionError as e:
+            QMessageBox.warning(self, t.dlg_invalid_input, format_input_error(self._ui_lang, e))
+            return
+        except Exception as e:
+            QMessageBox.critical(self, t.dlg_error, str(e))
+            return
+        self._prepared = prepared
+        self._refresh_phrase_ui(prepared)
+        self._cache_key = None
+        self._cached_mp3 = None
+        self._run_synthesis(prepared.tts_text, syllable=None, syllable_index=None)
+
     def _run_synthesis(
         self,
         tts_text: str,
@@ -238,6 +338,9 @@ class MainWindow(QMainWindow):
                     self, t.dlg_invalid_input, format_input_error(self._ui_lang, e)
                 )
                 return
+
+        self._pending_syllable_index = syllable_index
+        self._pending_was_full_phrase = syllable_index is None and syllable is None
 
         if syllable_index is not None:
             text = self._tts_text_for_syllable(prepared, syllable_index)
@@ -279,47 +382,98 @@ class MainWindow(QMainWindow):
             self._cached_mp3 = mp3
             self._cache_key = (self._prepared.tts_text, self._pending_voice_key)
 
+        if self._pending_was_full_phrase:
+            self._input.record_successful_play(self._input.plain_text())
+
         self._current_wav = Path(wav)
         try:
             pygame.mixer.music.load(wav)
             pygame.mixer.music.play()
-            self.statusBar().showMessage(t.status_playing)
+            self.statusBar().showMessage(
+                f"{t.status_playing} — {t.status_shortcuts_hint}"
+            )
         except Exception as e:
             QMessageBox.warning(self, t.dlg_playback_failed, str(e))
+            self._show_status_idle()
+            return
+
+        prepared = self._prepared
+        if prepared is None:
+            self._stop_transport()
+            return
+
+        idx = self._pending_syllable_index
+        if idx is not None:
+            self._highlight_mode_full = False
+            self._highlight_single_idx = idx
+            self._highlight_syllable_count = 1
+        else:
+            self._highlight_mode_full = True
+            self._highlight_single_idx = None
+            self._highlight_syllable_count = max(1, len(prepared.syllables))
+
+        self._playback_duration = _wav_duration_seconds(self._current_wav)
+        if self._playback_duration <= 0:
+            self._playback_duration = max(0.45, 0.35 * self._highlight_syllable_count)
+
+        self._play_start_monotonic = time.monotonic()
+        self._loop_armed = self._playback.loop_enabled()
+        self._transport_active = True
+        self._highlight_timer.start()
+        self._playback_monitor_timer.start()
 
     def _on_tts_failed(self, message: str) -> None:
         self._set_busy(False)
         t = self._t()
-        self.statusBar().showMessage(t.status_ready)
+        self._show_status_idle()
         QMessageBox.warning(self, t.dlg_synthesis_failed, message)
 
-    def _on_pause(self) -> None:
-        t = self._t()
+    def _on_highlight_tick(self) -> None:
+        if not self._transport_active or not pygame.mixer.music.get_busy():
+            return
+        elapsed = time.monotonic() - self._play_start_monotonic
+        if not self._highlight_mode_full and self._highlight_single_idx is not None:
+            self._tone_display.highlight(self._highlight_single_idx)
+            return
+        n = self._highlight_syllable_count
+        if n <= 0:
+            return
+        per = self._playback_duration / n
+        idx = min(n - 1, max(0, int(elapsed / per)))
+        self._tone_display.highlight(idx)
+
+    def _on_playback_monitor_tick(self) -> None:
+        if not self._transport_active:
+            return
         if pygame.mixer.music.get_busy():
-            pygame.mixer.music.pause()
-            self.statusBar().showMessage(t.status_paused)
-        else:
-            try:
-                pygame.mixer.music.unpause()
-                self.statusBar().showMessage(t.status_playing)
-            except Exception:
-                pass
-
-    def _on_stop(self) -> None:
-        pygame.mixer.music.stop()
-        self.statusBar().showMessage(self._t().status_stopped)
-
-    def _on_replay(self) -> None:
-        t = self._t()
-        if self._current_wav and self._current_wav.is_file():
+            return
+        self._highlight_timer.stop()
+        self._playback_monitor_timer.stop()
+        self._tone_display.highlight(None)
+        if self._playback.loop_enabled() and self._loop_armed:
             try:
                 pygame.mixer.music.rewind()
                 pygame.mixer.music.play()
-                self.statusBar().showMessage(t.status_playing)
+                self._play_start_monotonic = time.monotonic()
+                self._highlight_timer.start()
+                self._playback_monitor_timer.start()
+                self.statusBar().showMessage(
+                    f"{self._t().status_playing} — {self._t().status_shortcuts_hint}"
+                )
             except Exception:
-                self._on_play()
+                self._transport_active = False
+                self._loop_armed = False
+                self._show_status_idle()
         else:
-            self._on_play()
+            self._transport_active = False
+            self._loop_armed = False
+            self._show_status_idle()
+
+    def _on_stop(self) -> None:
+        pygame.mixer.music.stop()
+        self._stop_transport()
+        t = self._t()
+        self.statusBar().showMessage(f"{t.status_stopped} — {t.status_shortcuts_hint}")
 
     def _on_save(self) -> None:
         t = self._t()

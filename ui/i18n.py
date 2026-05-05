@@ -28,6 +28,8 @@ class UiTexts:
     mode_hanzi: str
     mode_pinyin: str
     placeholder_input: str
+    label_history: str
+    history_placeholder: str
     # Playback
     group_playback: str
     label_speed: str
@@ -35,17 +37,16 @@ class UiTexts:
     voice_female: str
     voice_male: str
     btn_play: str
-    btn_pause: str
     btn_stop: str
-    btn_replay: str
     btn_save: str
+    btn_loop: str
     label_syllables: str
     # Status
     status_ready: str
     status_synthesizing: str
     status_playing: str
-    status_paused: str
     status_stopped: str
+    status_shortcuts_hint: str
     status_saved: str
     # Dialogs
     dlg_invalid_input: str
@@ -71,22 +72,23 @@ def texts(lang: UiLanguage) -> UiTexts:
             mode_hanzi="汉字模式",
             mode_pinyin="拼音模式",
             placeholder_input="输入汉字（你好）或拼音（nǐ hǎo / ni3 hao3）…",
+            label_history="历史：",
+            history_placeholder="选择历史记录…",
             group_playback="播放",
             label_speed="语速：",
             label_voice="发音人：",
             voice_female="女声",
             voice_male="男声",
             btn_play="播放",
-            btn_pause="暂停",
             btn_stop="停止",
-            btn_replay="重播",
             btn_save="另存为…",
+            btn_loop="循环",
             label_syllables="单字 / 音节：",
             status_ready="就绪",
             status_synthesizing="正在合成语音…",
             status_playing="正在播放",
-            status_paused="已暂停",
             status_stopped="已停止",
+            status_shortcuts_hint="快捷键：Space 播放/停止 · R 重播 · S 聚焦输入",
             status_saved="已保存：{path}",
             dlg_invalid_input="输入无效",
             dlg_error="错误",
@@ -108,22 +110,23 @@ def texts(lang: UiLanguage) -> UiTexts:
         mode_hanzi="Chinese characters",
         mode_pinyin="Pinyin",
         placeholder_input="Enter Hanzi (你好) or Pinyin (nǐ hǎo / ni3 hao3)…",
+        label_history="History:",
+        history_placeholder="Pick a recent phrase…",
         group_playback="Playback",
         label_speed="Speed:",
         label_voice="Voice:",
         voice_female="🎙️ Female",
         voice_male="🎙️ Male",
         btn_play="Play",
-        btn_pause="Pause",
         btn_stop="Stop",
-        btn_replay="Replay",
         btn_save="Save as…",
+        btn_loop="Loop",
         label_syllables="Syllables:",
         status_ready="Ready",
         status_synthesizing="Synthesizing speech…",
         status_playing="Playing",
-        status_paused="Paused",
         status_stopped="Stopped",
+        status_shortcuts_hint="Shortcuts: Space — Play/Stop · R — Replay · S — Focus input",
         status_saved="Saved: {path}",
         dlg_invalid_input="Invalid input",
         dlg_error="Error",
