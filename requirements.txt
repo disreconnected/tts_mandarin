@@ -3,3 +3,6 @@ pypinyin
 pydub
 pygame
 PyQt6
+wordfreq
+jieba
+zhconv

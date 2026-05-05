@@ -12,19 +12,28 @@ You should see version information, not “command not found”.
 
 ## Windows
 
-1. **Chocolatey** (admin shell):
+1. **winget** (built into recent Windows):
+
+   ```powershell
+   winget source update
+   winget install -e --id Gyan.FFmpeg
+   ```
+
+   If winget cannot find the package, run `winget search ffmpeg` and use the **Id** column shown for a full build (often `Gyan.FFmpeg` or a `BtbN.FFmpeg.*` variant).
+
+2. **Chocolatey** (admin shell):
 
    ```powershell
    choco install ffmpeg
    ```
 
-2. **Scoop**:
+3. **Scoop**:
 
    ```powershell
    scoop install ffmpeg
    ```
 
-3. **Manual:** Download a build from [https://ffmpeg.org/download.html](https://ffmpeg.org/download.html) (or a trusted mirror such as [https://www.gyan.dev/ffmpeg/builds/](https://www.gyan.dev/ffmpeg/builds/)), extract it, and add the `bin` folder to your **PATH** environment variable.
+4. **Manual:** Download a build from [https://ffmpeg.org/download.html](https://ffmpeg.org/download.html) (or a trusted mirror such as [https://www.gyan.dev/ffmpeg/builds/](https://www.gyan.dev/ffmpeg/builds/)), extract it, and add the `bin` folder to your **PATH** environment variable.
 
 ## macOS
 

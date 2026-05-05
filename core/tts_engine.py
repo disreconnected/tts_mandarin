@@ -13,15 +13,23 @@ VOICES: dict[str, str] = {
     "male": "zh-CN-YunxiNeural",
 }
 
+# Edge TTS speaking rate: slower than default (~22% under stock) for a calmer “teacher” pace.
+DEFAULT_SPEECH_RATE = "-22%"
+
 
 class TTSError(RuntimeError):
-    """Raised when synthesis fails."""
+    """Raised when synthesis fails (``key`` / ``params`` for UI translation)."""
+
+    def __init__(self, key: str, **params: object) -> None:
+        self.key = key
+        self.params = params
+        super().__init__(key)
 
 
 def _resolve_voice(voice_key: str) -> str:
     if voice_key not in VOICES:
         known = ", ".join(sorted(VOICES))
-        raise TTSError(f"未知发音人：{voice_key!r}。可选：{known}")
+        raise TTSError("unknown_voice", voice=voice_key, known=known)
     return VOICES[voice_key]
 
 
@@ -31,28 +39,37 @@ async def generate_tts_async(
     voice_key: str = "female",
     out_dir: Path,
     suffix: str = ".mp3",
+    rate: str = DEFAULT_SPEECH_RATE,
+    pitch: str = "+0Hz",
+    volume: str = "+0%",
 ) -> Path:
     """
     Generate speech with Microsoft Edge TTS and write to a unique file under ``out_dir``.
     """
     stripped = (text or "").strip()
     if not stripped:
-        raise TTSError("合成文本为空。")
+        raise TTSError("empty_tts_text")
 
     voice = _resolve_voice(voice_key)
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"tts_{uuid.uuid4().hex}{suffix}"
 
     try:
-        communicate = edge_tts.Communicate(stripped, voice=voice)
+        communicate = edge_tts.Communicate(
+            stripped,
+            voice=voice,
+            rate=rate,
+            pitch=pitch,
+            volume=volume,
+        )
         await communicate.save(str(out_path))
     except TTSError:
         raise
     except Exception as e:
-        raise TTSError(f"语音合成失败：{e}") from e
+        raise TTSError("synth_failed", detail=str(e)) from e
 
     if not out_path.is_file() or out_path.stat().st_size == 0:
-        raise TTSError("语音合成未生成有效音频文件。")
+        raise TTSError("no_audio_output")
 
     return out_path
 
@@ -63,8 +80,19 @@ def generate_tts(
     voice_key: str = "female",
     out_dir: Path,
     suffix: str = ".mp3",
+    rate: str = DEFAULT_SPEECH_RATE,
+    pitch: str = "+0Hz",
+    volume: str = "+0%",
 ) -> Path:
     """Synchronous wrapper for use from threads without an existing event loop."""
     return asyncio.run(
-        generate_tts_async(text, voice_key=voice_key, out_dir=out_dir, suffix=suffix)
+        generate_tts_async(
+            text,
+            voice_key=voice_key,
+            out_dir=out_dir,
+            suffix=suffix,
+            rate=rate,
+            pitch=pitch,
+            volume=volume,
+        )
     )
