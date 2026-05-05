@@ -122,6 +122,8 @@ class MainWindow(QMainWindow):
         self._tone_display = ToneDisplay()
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setMinimumHeight(200)
         scroll.setWidget(self._tone_display)
 
