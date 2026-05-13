@@ -1,15 +1,50 @@
-"""Load synthesized audio and apply pitch-preserving tempo with ffmpeg atempo."""
+"""Load synthesized audio and apply pitch-preserving tempo with ffmpeg atempo.
+
+The ffmpeg binary is bundled via ``imageio-ffmpeg`` (a pip-installed static build),
+so the app needs no system ffmpeg on PATH for either dev or PyInstaller-frozen runs.
+A PATH-based ``ffmpeg`` is used as a fallback if the bundle is unavailable.
+"""
 
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 import uuid
 from pathlib import Path
 
 from pydub import AudioSegment
-from pydub.utils import which
 
 SETUP_DOC = "setup_ffmpeg.md"
+
+
+def _bundled_ffmpeg_path() -> str | None:
+    """Return path to the imageio-ffmpeg bundled binary, or ``None`` if unavailable."""
+    try:
+        import imageio_ffmpeg  # type: ignore
+    except Exception:
+        return None
+    try:
+        path = imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return None
+    if path and os.path.isfile(path):
+        return path
+    return None
+
+
+def _resolve_ffmpeg() -> str | None:
+    """Prefer bundled ffmpeg (imageio-ffmpeg); fall back to PATH lookup."""
+    bundled = _bundled_ffmpeg_path()
+    if bundled:
+        return bundled
+    return shutil.which("ffmpeg")
+
+
+_FFMPEG_PATH: str | None = _resolve_ffmpeg()
+if _FFMPEG_PATH:
+    # Make pydub use the same binary (avoids a separate PATH lookup).
+    AudioSegment.converter = _FFMPEG_PATH
 
 
 class AudioProcessingError(RuntimeError):
@@ -21,9 +56,22 @@ class AudioProcessingError(RuntimeError):
         super().__init__(key)
 
 
-def _ensure_ffmpeg() -> None:
-    if not which("ffmpeg"):
-        raise AudioProcessingError("ffmpeg_missing", doc=SETUP_DOC)
+def _ensure_ffmpeg() -> str:
+    """Return the ffmpeg binary path, re-resolving if not previously found."""
+    global _FFMPEG_PATH
+    if _FFMPEG_PATH and os.path.isfile(_FFMPEG_PATH):
+        return _FFMPEG_PATH
+    _FFMPEG_PATH = _resolve_ffmpeg()
+    if _FFMPEG_PATH:
+        AudioSegment.converter = _FFMPEG_PATH
+        return _FFMPEG_PATH
+    raise AudioProcessingError("ffmpeg_missing", doc=SETUP_DOC)
+
+
+def _format_from_path(p: Path) -> str:
+    """Derive a pydub ``format=`` hint from a file extension (skips ffprobe)."""
+    ext = p.suffix.lower().lstrip(".")
+    return ext or "wav"
 
 
 def _atempo_filter_chain(speed_factor: float) -> str | None:
@@ -56,7 +104,7 @@ def apply_speed(
     Write a new audio file with tempo changed by ``speed_factor`` without pitch shift
     (ffmpeg ``atempo``). Returns path to output file.
     """
-    _ensure_ffmpeg()
+    ffmpeg_exe = _ensure_ffmpeg()
     if not input_path.is_file():
         raise AudioProcessingError("input_missing", path=str(input_path))
 
@@ -65,13 +113,14 @@ def apply_speed(
 
     chain = _atempo_filter_chain(speed_factor)
     if chain is None:
-        # No tempo change: still normalize to WAV for pygame via pydub
-        audio = AudioSegment.from_file(str(input_path))
+        audio = AudioSegment.from_file(
+            str(input_path), format=_format_from_path(input_path)
+        )
         audio.export(str(out_path), format=out_format)
         return out_path
 
     cmd = [
-        "ffmpeg",
+        ffmpeg_exe,
         "-hide_banner",
         "-loglevel",
         "error",
@@ -103,5 +152,7 @@ def export_copy(input_path: Path, dest_path: Path, format_hint: str | None = Non
     if fmt is None:
         ext = dest_path.suffix.lower().lstrip(".")
         fmt = ext if ext else "wav"
-    audio = AudioSegment.from_file(str(input_path))
+    audio = AudioSegment.from_file(
+        str(input_path), format=_format_from_path(input_path)
+    )
     audio.export(str(dest_path), format=fmt)

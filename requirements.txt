@@ -7,3 +7,4 @@ wordfreq
 jieba
 zhconv
 deep-translator
+imageio-ffmpeg
