@@ -11,7 +11,10 @@ from ui.main_window import MainWindow
 
 
 def main() -> None:
-    base_dir = Path(__file__).resolve().parent
+    if getattr(sys, "frozen", False):
+        base_dir = Path(sys.executable).resolve().parent
+    else:
+        base_dir = Path(__file__).resolve().parent
     app = QApplication(sys.argv)
     win = MainWindow(base_dir)
     win.show()
