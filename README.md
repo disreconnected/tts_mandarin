@@ -29,21 +29,25 @@ Detailed milestones, per-phase progress, and implementation notes: [ROADMAP.md](
 
 ## Tech stack
 
-- Python 3.10+
+- Python 3.10+ (use **3.12** on Windows for PyInstaller builds and reliable binary wheels)
 - PyQt6, pygame (audio playback)
-- edge-tts, pypinyin, pydub (+ ffmpeg CLI)
+- edge-tts, pypinyin, pydub, **imageio-ffmpeg** (ships a static ffmpeg for tempo / export — no system install required)
 
 ## Installation
 
 1. Clone the repository and create a virtual environment (recommended).
 
-2. Install **ffmpeg** and ensure `ffmpeg` is on your `PATH`. See [setup_ffmpeg.md](setup_ffmpeg.md).
-
-3. Install Python dependencies:
+2. Install Python dependencies (Python **3.12** recommended on Windows for prebuilt wheels such as pygame):
 
 ```bash
 pip install -r requirements.txt
 ```
+
+3. Optional: a **system** ffmpeg on `PATH` is not required for this app; see [setup_ffmpeg.md](setup_ffmpeg.md) only if you want a manual install or are troubleshooting.
+
+## Building a Windows `.exe` (PyInstaller)
+
+Step-by-step: [docs/BUILD_WINDOWS.md](docs/BUILD_WINDOWS.md). The built folder lives under `dist/` and is not committed to Git.
 
 ## Usage
 
