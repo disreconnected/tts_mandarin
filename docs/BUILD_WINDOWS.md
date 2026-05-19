@@ -58,8 +58,11 @@ py -3.12 -m PyInstaller main.py `
   --collect-submodules edge_tts `
   --hidden-import aiohttp `
   --hidden-import aiohttp.resolver `
-  --hidden-import aiohttp.connector
+  --hidden-import aiohttp.connector `
+  --hidden-import audioop
 ```
+
+On **Python 3.13+**, `requirements.txt` installs `audioop-lts` (stdlib `audioop` was removed). Without it, pydub fails at startup with `No module named 'pyaudioop'`.
 
 **Why these flags**
 
@@ -122,6 +125,7 @@ Or double-click `run.bat` in the repo root (same command + `pause` at the end).
 | Symptom | What to try |
 |---------|-------------|
 | `Failed to load python312.dll` under `build\...` | Run the exe under **`dist\ChinesePronunciationTrainer\`**, not `build\`. |
+| `No module named 'pyaudioop'` / `audioop` | Build on 3.13+ needs `pip install audioop-lts` and `--hidden-import audioop` (included above). |
 | Missing module at runtime | Add `--hidden-import packagename` to the command and rebuild. |
 | `py` not found | Install Python from python.org and use **“py launcher”**, or replace `py -3.12` with the full path to `python.exe`. |
 
