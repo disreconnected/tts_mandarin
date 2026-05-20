@@ -137,6 +137,9 @@ class InputPanel(QWidget):
     def plain_text(self) -> str:
         return self.text_edit.toPlainText()
 
+    def set_plain_text(self, text: str) -> None:
+        self.text_edit.setPlainText(text)
+
     def detect(self):
         """Return ``InputDetection`` or raise ``InputDetectionError``."""
         text = self.plain_text()

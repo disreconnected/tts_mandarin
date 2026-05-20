@@ -1,8 +1,11 @@
 edge-tts
 pypinyin
 pydub
+audioop-lts; python_version >= "3.13"
 pygame
 PyQt6
 wordfreq
 jieba
 zhconv
+deep-translator
+imageio-ffmpeg
