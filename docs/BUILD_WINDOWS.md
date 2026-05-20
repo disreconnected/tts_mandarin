@@ -73,6 +73,22 @@ On **Python 3.13+**, `requirements.txt` installs `audioop-lts` (stdlib `audioop`
 
 PyInstaller may write `ChinesePronunciationTrainer.spec` in the repo root; it is gitignored (`*.spec`).
 
+## Kokoro edition — larger bundle with local TTS
+
+To ship a frozen build that includes **Kokoro** (PyTorch + model runtime), use the **`ChinesePronunciationTrainerKokoro`** target. Output exe:
+
+`dist\ChinesePronunciationTrainerKokoro\ChinesePronunciationTrainerKokoro.exe`
+
+This is the **“Chinese Pronunciation Trainer — Kokoro version”** distribution (same app; **Kokoro** + **Edge** engines inside). The folder is **much larger** than the standard build (torch alone is big); the first launch may still download **Hugging Face** Kokoro weights to the user cache.
+
+From the repo root:
+
+```powershell
+.\scripts\build_kokoro_edition.ps1
+```
+
+Or paste the equivalent `PyInstaller` command from `scripts/build_kokoro_edition.ps1` (includes `--collect-all kokoro`, `--collect-all torch`, `--collect-all misaki`, etc.).
+
 ## Step 6 — Where is the exe?
 
 After a successful build:

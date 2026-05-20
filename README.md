@@ -19,7 +19,7 @@ Detailed milestones, per-phase progress, and implementation notes: [ROADMAP.md](
 ## Features (Phase 1)
 
 - **Dual input**: Chinese characters, Pinyin with tone marks (e.g. `nǐ hǎo`), or numbered Pinyin (`ni3 hao3`), with optional **Auto / 汉字 / 拼音** mode.
-- **TTS**: `edge-tts` with Mandarin neural voices (**Female**: `zh-CN-XiaoxiaoNeural`, **Male**: `zh-CN-YunxiNeural`).
+- **TTS**: **Microsoft Edge** (default, `edge-tts`, online) or **Kokoro** (local [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M); **four** curated Mandarin voices). See [docs/TTS_ENGINES.md](docs/TTS_ENGINES.md). For a **PyInstaller build that bundles Kokoro/torch**, see [docs/BUILD_WINDOWS.md](docs/BUILD_WINDOWS.md) (Kokoro edition).
 - **Speed**: 0.25×–2× using ffmpeg `atempo` (pitch-preserving).
 - **Tone view**: Syllables with tone-colored labels (1 red, 2 green, 3 blue, 4 purple, neutral gray).
 - **Playback**: Play / Pause / Stop, replay, play individual syllables, save **WAV/MP3**.
@@ -31,7 +31,8 @@ Detailed milestones, per-phase progress, and implementation notes: [ROADMAP.md](
 
 - Python 3.10+ (use **3.12** on Windows for PyInstaller builds and reliable binary wheels)
 - PyQt6, pygame (audio playback)
-- edge-tts, pypinyin, pydub, **imageio-ffmpeg** (ships a static ffmpeg for tempo / export — no system install required)
+- edge-tts (Edge TTS, online) and optional **kokoro** + **misaki[zh]** (local Kokoro-82M Mandarin; large download on first synthesis)
+- pypinyin, pydub, **imageio-ffmpeg** (ships a static ffmpeg for tempo / export — no system install required)
 
 ## Installation
 

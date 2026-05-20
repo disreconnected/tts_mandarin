@@ -34,6 +34,9 @@ class UiTexts:
     history_placeholder: str
     # Playback
     group_playback: str
+    label_tts_engine: str
+    tts_engine_edge: str
+    tts_engine_kokoro: str
     label_speed: str
     label_voice: str
     voice_female: str
@@ -79,6 +82,9 @@ def texts(lang: UiLanguage) -> UiTexts:
             label_history="历史：",
             history_placeholder="选择历史记录…",
             group_playback="播放",
+            label_tts_engine="语音引擎：",
+            tts_engine_edge="Microsoft Edge（在线，默认）",
+            tts_engine_kokoro="Kokoro（本机，需安装依赖）",
             label_speed="语速：",
             label_voice="发音人：",
             voice_female="女声",
@@ -119,6 +125,9 @@ def texts(lang: UiLanguage) -> UiTexts:
         label_history="History:",
         history_placeholder="Pick a recent phrase…",
         group_playback="Playback",
+        label_tts_engine="TTS engine:",
+        tts_engine_edge="Microsoft Edge (online, default)",
+        tts_engine_kokoro="Kokoro (local; see requirements.txt)",
         label_speed="Speed:",
         label_voice="Voice:",
         voice_female="🎙️ Female",

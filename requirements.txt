@@ -9,3 +9,7 @@ jieba
 zhconv
 deep-translator
 imageio-ffmpeg
+# Local Kokoro-82M Mandarin TTS (large deps; first run downloads model weights).
+kokoro>=0.9.4
+soundfile
+misaki[zh]

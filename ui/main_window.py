@@ -30,7 +30,7 @@ from ui.i18n import (
     texts,
 )
 from ui.input_panel import InputPanel
-from ui.playback_panel import PlaybackPanel
+from ui.playback_panel import TTS_ENGINE_EDGE, TTS_ENGINE_KOKORO, PlaybackPanel
 from ui.tone_display import ToneDisplay
 from ui.translation_panel import TranslationPanel
 from ui.tts_worker import TTSWorker
@@ -38,6 +38,8 @@ from ui.tts_worker import TTSWorker
 SETTINGS_ORG = "TTSMandarin"
 SETTINGS_APP = "ChinesePronunciationTrainer"
 SETTINGS_LANG_KEY = "ui/language"
+SETTINGS_TTS_ENGINE = "tts/engine"
+SETTINGS_TTS_VOICE = "tts/voice"
 
 # Advance highlight so the UI leads the ear. TTS does not space syllables evenly, so mid-phrase
 # syllables (e.g. 几 in 你家有几口人) can feel late with a fixed lead — add a small ramp toward
@@ -70,7 +72,7 @@ def _avg_syllable_duration_sec(wav_path: Path, syllable_count: int) -> float:
 
 
 class MainWindow(QMainWindow):
-    tts_request = pyqtSignal(str, str, float, str, bool, str)
+    tts_request = pyqtSignal(str, str, str, float, str, bool, str)
 
     def __init__(self, base_dir: Path, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -87,9 +89,10 @@ class MainWindow(QMainWindow):
         pygame.mixer.init(frequency=44100)
         self._prepared: PreparedPhrase | None = None
         self._cached_mp3: str | None = None
-        self._cache_key: tuple[str, str] | None = None
+        self._cache_key: tuple[str, str, str] | None = None
         self._current_wav: Path | None = None
         self._pending_voice_key: str = "female"
+        self._pending_tts_engine: str = TTS_ENGINE_EDGE
         self._busy = False
 
         self._pending_syllable_index: int | None = None
@@ -159,11 +162,13 @@ class MainWindow(QMainWindow):
         self._setup_language_menu()
         self._setup_shortcuts()
         self._apply_ui_language(self._ui_lang, persist=False)
+        self._restore_tts_preferences()
 
         self._playback.play_clicked.connect(self._on_play)
         self._playback.stop_clicked.connect(self._on_stop)
         self._playback.save_clicked.connect(self._on_save)
         self._playback.syllable_activated.connect(self._on_syllable)
+        self._playback.tts_settings_changed.connect(self._on_playback_tts_settings_changed)
 
     def _setup_shortcuts(self) -> None:
         sc_space = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
@@ -244,13 +249,29 @@ class MainWindow(QMainWindow):
         self._tabs.setTabText(0, t.tab_trainer)
         self._tabs.setTabText(1, t.tab_translation)
         self._input.apply_language(t)
-        self._playback.apply_language(t)
+        self._playback.apply_language(t, lang.value)
         self._tone_display.set_ui_language(lang)
         self._act_lang_en.setChecked(lang == UiLanguage.EN)
         self._act_lang_zh.setChecked(lang == UiLanguage.ZH)
         self._show_status_idle()
         if self._prepared is not None:
             self._refresh_phrase_ui(self._prepared)
+
+    def _restore_tts_preferences(self) -> None:
+        raw_e = self._settings.value(SETTINGS_TTS_ENGINE, TTS_ENGINE_EDGE)
+        engine = (
+            str(raw_e)
+            if str(raw_e) in (TTS_ENGINE_EDGE, TTS_ENGINE_KOKORO)
+            else TTS_ENGINE_EDGE
+        )
+        voice = str(self._settings.value(SETTINGS_TTS_VOICE, "female"))
+        self._playback.set_tts_preferences(engine, voice)
+
+    def _on_playback_tts_settings_changed(self) -> None:
+        self._cache_key = None
+        self._cached_mp3 = None
+        self._settings.setValue(SETTINGS_TTS_ENGINE, self._playback.tts_engine())
+        self._settings.setValue(SETTINGS_TTS_VOICE, self._playback.voice_key())
 
     def _show_status_idle(self) -> None:
         t = texts(self._ui_lang)
@@ -383,13 +404,15 @@ class MainWindow(QMainWindow):
         else:
             text = tts_text
         voice_key = self._playback.voice_key()
+        engine = self._playback.tts_engine()
         speed = self._playback.current_speed()
         self._pending_voice_key = voice_key
+        self._pending_tts_engine = engine
 
         reuse = ""
         should_update_cache = syllable is None and syllable_index is None
         if should_update_cache:
-            key = (prepared.tts_text, voice_key)
+            key = (prepared.tts_text, engine, voice_key)
             if (
                 self._cache_key == key
                 and self._cached_mp3
@@ -402,6 +425,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(t.status_synthesizing)
         self.tts_request.emit(
             text,
+            engine,
             voice_key,
             speed,
             reuse,
@@ -414,7 +438,11 @@ class MainWindow(QMainWindow):
         t = self._t()
         if should_update_cache and self._prepared is not None:
             self._cached_mp3 = mp3
-            self._cache_key = (self._prepared.tts_text, self._pending_voice_key)
+            self._cache_key = (
+                self._prepared.tts_text,
+                self._pending_tts_engine,
+                self._pending_voice_key,
+            )
 
         if self._pending_was_full_phrase:
             self._input.record_successful_play(self._input.plain_text())
