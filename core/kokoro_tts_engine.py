@@ -1,17 +1,16 @@
 """Kokoro-82M local TTS (hexgrad/kokoro) for Mandarin Chinese.
 
-Uses ``KPipeline(lang_code='z')`` and a curated subset of Kokoro Mandarin voices.
+Uses ``KPipeline(lang_code='z')`` with legacy ``ZHG2P`` (jieba + pypinyin) for
+reliable frozen builds. Curated Mandarin voices only.
 
 Requires: ``pip install kokoro soundfile misaki[zh]`` (see ``requirements.txt``).
-On Windows, installing `espeak-ng`_ is recommended for robust G2P fallback.
-
-.. _espeak-ng: https://github.com/espeak-ng/espeak-ng/releases
 """
 
 from __future__ import annotations
 
 import os
 import sys
+import traceback
 import uuid
 from pathlib import Path
 from typing import Final
@@ -21,9 +20,8 @@ import soundfile as sf
 
 from core.tts_engine import TTSError
 
-# Curated Kokoro-82M Mandarin voices shipped in this app (subset of full VOICES.md).
-# Order = UI dropdown order.
-# Source voice IDs: https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md
+KOKORO_REPO_ID = "hexgrad/Kokoro-82M"
+
 KOKORO_VOICE_LABELS_EN: Final[dict[str, str]] = {
     "zf_xiaoyi": "Xiaoyi (female)",
     "zf_xiaobei": "Xiaobei (female)",
@@ -58,12 +56,38 @@ def _ensure_stdio() -> None:
         sys.stdout = open(os.devnull, "w", encoding="utf-8")
 
 
-def _kokoro_unavailable_detail(exc: BaseException) -> str:
+def _configure_hf_cache(base_dir: Path | None) -> None:
+    """Keep Hugging Face downloads next to the exe when frozen."""
+    if not getattr(sys, "frozen", False) or base_dir is None:
+        return
+    cache = base_dir / "hf_cache"
+    cache.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("HF_HOME", str(cache))
+    os.environ.setdefault("HF_HUB_CACHE", str(cache / "hub"))
+
+
+def _write_kokoro_debug(base_dir: Path | None, exc: BaseException) -> None:
+    if base_dir is None:
+        return
+    try:
+        log_dir = base_dir / "temp_audio"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        (log_dir / "kokoro_error.log").write_text(
+            traceback.format_exc(), encoding="utf-8"
+        )
+    except OSError:
+        pass
+
+
+def _kokoro_unavailable_detail(exc: BaseException, base_dir: Path | None = None) -> str:
     if getattr(sys, "frozen", False):
+        log_hint = ""
+        if base_dir is not None:
+            log_hint = f" Details: {base_dir / 'temp_audio' / 'kokoro_error.log'}"
         return (
             "Kokoro could not start in this app build. "
             "Try Microsoft Edge TTS, or rebuild with scripts/build_kokoro_edition.ps1. "
-            f"({exc})"
+            f"({exc}){log_hint}"
         )
     return (
         "Kokoro TTS is not available. Install: pip install kokoro soundfile misaki[zh]. "
@@ -71,20 +95,27 @@ def _kokoro_unavailable_detail(exc: BaseException) -> str:
     )
 
 
-def _get_pipeline():
+def _get_pipeline(base_dir: Path | None = None):
     """Lazy singleton ``KPipeline`` for zh (lang_code='z')."""
     global _pipeline
     if _pipeline is not None:
         return _pipeline
     _ensure_stdio()
+    _configure_hf_cache(base_dir)
     try:
         from kokoro import KPipeline
+        from misaki import zh as misaki_zh
+
+        pipe = KPipeline(lang_code="z", repo_id=KOKORO_REPO_ID)
+        # Use legacy G2P (no ZHFrontend / pypinyin_dict) — fewer deps, works in PyInstaller.
+        pipe.g2p = misaki_zh.ZHG2P(version=None)
+        _pipeline = pipe
     except Exception as e:
+        _write_kokoro_debug(base_dir, e)
         raise TTSError(
             "synth_failed",
-            detail=_kokoro_unavailable_detail(e),
+            detail=_kokoro_unavailable_detail(e, base_dir),
         ) from e
-    _pipeline = KPipeline(lang_code="z")
     return _pipeline
 
 
@@ -128,11 +159,12 @@ def generate_kokoro_tts(
     *,
     voice_key: str = DEFAULT_KOKORO_VOICE,
     out_dir: Path,
+    base_dir: Path | None = None,
 ) -> Path:
     """
     Synthesize Mandarin with Kokoro, write a 24 kHz mono WAV under ``out_dir``.
 
-    Playback speed is applied later via ``apply_speed`` (same as Edge TTS path).
+    ``base_dir`` should be the app root (exe folder when frozen) for HF cache + logs.
     """
     stripped = (text or "").strip()
     if not stripped:
@@ -142,16 +174,16 @@ def generate_kokoro_tts(
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"kokoro_{uuid.uuid4().hex}.wav"
 
-    pipeline = _get_pipeline()
+    pipeline = _get_pipeline(base_dir)
     chunks: list = []
     try:
-        # speed=1.0: user-facing tempo still handled by ffmpeg atempo in the worker.
         generator = pipeline(stripped, voice=voice, speed=1.0)
         for _gs, _ps, audio in generator:
             chunks.append(audio)
     except TTSError:
         raise
     except Exception as e:
+        _write_kokoro_debug(base_dir, e)
         raise TTSError("synth_failed", detail=str(e)) from e
 
     audio_np = _chunks_to_numpy(chunks)

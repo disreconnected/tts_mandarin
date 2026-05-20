@@ -22,9 +22,12 @@ class TTSWorker(QObject):
     finished = pyqtSignal(str, str, bool)
     failed = pyqtSignal(str)
 
-    def __init__(self, out_dir: Path, parent: QObject | None = None) -> None:
+    def __init__(
+        self, out_dir: Path, base_dir: Path, parent: QObject | None = None
+    ) -> None:
         super().__init__(parent)
         self._out_dir = out_dir
+        self._base_dir = base_dir
 
     @pyqtSlot(str, str, str, float, str, bool, str)
     def synthesize(
@@ -49,7 +52,10 @@ class TTSWorker(QObject):
                     raise FileNotFoundError(str(src))
             elif engine == "kokoro":
                 src = generate_kokoro_tts(
-                    tts_text, voice_key=voice_key, out_dir=self._out_dir
+                    tts_text,
+                    voice_key=voice_key,
+                    out_dir=self._out_dir,
+                    base_dir=self._base_dir,
                 )
             else:
                 src = generate_tts(

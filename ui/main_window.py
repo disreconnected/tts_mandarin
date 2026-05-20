@@ -114,7 +114,7 @@ class MainWindow(QMainWindow):
         self._playback_monitor_timer.timeout.connect(self._on_playback_monitor_tick)
 
         self._tts_thread = QThread(self)
-        self._tts_worker = TTSWorker(self._temp_dir)
+        self._tts_worker = TTSWorker(self._temp_dir, self._base_dir)
         self._tts_worker.moveToThread(self._tts_thread)
         self.tts_request.connect(
             self._tts_worker.synthesize,

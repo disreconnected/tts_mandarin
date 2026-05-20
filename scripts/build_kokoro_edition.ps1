@@ -8,9 +8,13 @@ Set-Location $PSScriptRoot\..
 
 Remove-Item -Recurse -Force dist\ChinesePronunciationTrainerKokoro, build\ChinesePronunciationTrainerKokoro -ErrorAction SilentlyContinue
 
+# PyInstaller breaks ``for name in ...: vars()[name] = ...`` in torch._numpy._ufuncs.
+py -3.12 scripts\patch_torch_ufuncs.py
+
 # NLTK is often installed globally (e.g. open-interpreter) but this app does not use it.
 # PyInstaller's pyi_rth_nltk hook crashes at startup (NameError: obj) — exclude it.
 py -3.12 -m PyInstaller main.py `
+  --runtime-hook hooks\rthook_torch_dynamo.py `
   --name "ChinesePronunciationTrainerKokoro" `
   --windowed `
   --onedir `
@@ -24,6 +28,10 @@ py -3.12 -m PyInstaller main.py `
   --collect-all kokoro `
   --collect-all torch `
   --collect-all misaki `
+  --collect-all espeakng_loader `
+  --collect-all phonemizer `
+  --collect-all pypinyin_dict `
+  --collect-all language_tags `
   --collect-data certifi `
   --collect-submodules edge_tts `
   --collect-submodules torch `
