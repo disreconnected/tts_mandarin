@@ -144,6 +144,7 @@ Or double-click `run.bat` in the repo root (same command + `pause` at the end).
 | `No module named 'pyaudioop'` / `audioop` | Build on 3.13+ needs `pip install audioop-lts` and `--hidden-import audioop` (included above). |
 | Missing module at runtime | Add `--hidden-import packagename` to the command and rebuild. |
 | `pyi_rth_nltk` / `name 'obj' is not defined` on Kokoro exe startup | NLTK is not used by this app; rebuild with `scripts/build_kokoro_edition.ps1` (includes `--exclude-module nltk`). |
+| Kokoro: `Cannot log to objects of type 'NoneType'` | Windowed exe has no stderr; fixed in `main.py` — **rebuild** the Kokoro edition after pulling latest `main`. |
 | `py` not found | Install Python from python.org and use **“py launcher”**, or replace `py -3.12` with the full path to `python.exe`. |
 
 For older setup notes about a **system** ffmpeg on PATH, see [setup_ffmpeg.md](../setup_ffmpeg.md); the bundled binary is preferred for normal use.

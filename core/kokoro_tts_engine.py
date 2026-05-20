@@ -10,6 +10,8 @@ On Windows, installing `espeak-ng`_ is recommended for robust G2P fallback.
 
 from __future__ import annotations
 
+import os
+import sys
 import uuid
 from pathlib import Path
 from typing import Final
@@ -48,20 +50,39 @@ DEFAULT_KOKORO_VOICE = "zf_xiaoyi"
 _pipeline = None
 
 
+def _ensure_stdio() -> None:
+    """Kokoro configures loguru with ``sys.stderr``; windowed PyInstaller exe has None."""
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")
+
+
+def _kokoro_unavailable_detail(exc: BaseException) -> str:
+    if getattr(sys, "frozen", False):
+        return (
+            "Kokoro could not start in this app build. "
+            "Try Microsoft Edge TTS, or rebuild with scripts/build_kokoro_edition.ps1. "
+            f"({exc})"
+        )
+    return (
+        "Kokoro TTS is not available. Install: pip install kokoro soundfile misaki[zh]. "
+        f"({exc})"
+    )
+
+
 def _get_pipeline():
     """Lazy singleton ``KPipeline`` for zh (lang_code='z')."""
     global _pipeline
     if _pipeline is not None:
         return _pipeline
+    _ensure_stdio()
     try:
         from kokoro import KPipeline
     except Exception as e:
         raise TTSError(
             "synth_failed",
-            detail=(
-                "Kokoro TTS is not available. Install dependencies: "
-                f"pip install kokoro soundfile misaki[zh]. ({e})"
-            ),
+            detail=_kokoro_unavailable_detail(e),
         ) from e
     _pipeline = KPipeline(lang_code="z")
     return _pipeline

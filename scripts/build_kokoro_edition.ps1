@@ -30,6 +30,7 @@ py -3.12 -m PyInstaller main.py `
   --hidden-import aiohttp `
   --hidden-import aiohttp.resolver `
   --hidden-import aiohttp.connector `
-  --hidden-import audioop
+  --hidden-import audioop `
+  --hidden-import loguru
 
 Write-Host "Done. Run: dist\ChinesePronunciationTrainerKokoro\ChinesePronunciationTrainerKokoro.exe"

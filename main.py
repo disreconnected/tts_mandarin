@@ -2,8 +2,23 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
+
+
+def _fix_stdio_for_windowed_frozen() -> None:
+    """PyInstaller --windowed sets stdout/stderr to None; Kokoro uses loguru on stderr."""
+    if not getattr(sys, "frozen", False):
+        return
+    devnull = open(os.devnull, "w", encoding="utf-8")
+    if sys.stderr is None:
+        sys.stderr = devnull
+    if sys.stdout is None:
+        sys.stdout = devnull
+
+
+_fix_stdio_for_windowed_frozen()
 
 from PyQt6.QtWidgets import QApplication
 
