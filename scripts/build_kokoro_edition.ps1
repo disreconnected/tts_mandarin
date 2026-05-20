@@ -8,11 +8,14 @@ Set-Location $PSScriptRoot\..
 
 Remove-Item -Recurse -Force dist\ChinesePronunciationTrainerKokoro, build\ChinesePronunciationTrainerKokoro -ErrorAction SilentlyContinue
 
+# NLTK is often installed globally (e.g. open-interpreter) but this app does not use it.
+# PyInstaller's pyi_rth_nltk hook crashes at startup (NameError: obj) — exclude it.
 py -3.12 -m PyInstaller main.py `
   --name "ChinesePronunciationTrainerKokoro" `
   --windowed `
   --onedir `
   --noconfirm `
+  --exclude-module nltk `
   --collect-all jieba `
   --collect-all wordfreq `
   --collect-all pypinyin `
